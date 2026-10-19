@@ -1,0 +1,62 @@
+{
+  "name": "cytoscape-libavoid",
+  "version": "0.1.0",
+  "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly), incl. sankey-style ports for material flow diagrams",
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "browser": "./dist/cytoscape-libavoid.esm.js",
+  "unpkg": "./dist/cytoscape-libavoid.umd.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "docs/",
+    "licenses/",
+    "THIRD-PARTY-NOTICES.md",
+    "src/",
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "demo": "npm run build && node scripts/serve.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "cytoscape",
+    "cytoscape-extension",
+    "libavoid",
+    "edge-routing",
+    "orthogonal",
+    "sankey",
+    "material-flow"
+  ],
+  "author": "Philipp Kabala",
+  "license": "MIT",
+  "peerDependencies": {
+    "cytoscape": "^3.2.0"
+  },
+  "dependencies": {
+    "libavoid-js": "^0.5.0-beta.5"
+  },
+  "devDependencies": {
+    "cytoscape": "^3.34.3",
+    "esbuild": "^0.28.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pkabalski/cytoscape-libavoid.git"
+  },
+  "homepage": "https://github.com/pkabalski/cytoscape-libavoid#readme",
+  "bugs": {
+    "url": "https://github.com/pkabalski/cytoscape-libavoid/issues"
+  }
+}

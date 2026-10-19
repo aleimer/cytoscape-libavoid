@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cytoscape-libavoid Demo</title>
+  <style>
+    html, body { margin: 0; height: 100%; font: 14px system-ui, sans-serif; background: #fafafa; color: #222; }
+    #cy { position: absolute; inset: 48px 0 0 0; }
+    header { height: 48px; display: flex; gap: 16px; align-items: center; padding: 0 16px; border-bottom: 1px solid #ddd; background: #fff; flex-wrap: wrap; }
+    header label { display: flex; gap: 6px; align-items: center; }
+    #stats { margin-left: auto; color: #666; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>cytoscape-libavoid</strong>
+    <label>Ports <select id="ports"><option value="sankey">sankey</option><option value="auto">auto</option></select></label>
+    <label>Routing <select id="routingType"><option>orthogonal</option><option>polyline</option></select></label>
+    <label>Fluss <select id="flowDirection"><option>right</option><option>down</option><option>left</option><option>up</option></select></label>
+    <label>Eckradius <input id="cornerRadius" type="range" min="0" max="20" value="6" /></label>
+    <label><input id="rerouteOnDrag" type="checkbox" checked /> beim Ziehen routen</label>
+    <button id="add">+ Hindernis</button>
+    <span id="stats"></span>
+  </header>
+  <div id="cy"></div>
+
+  <script src="../node_modules/cytoscape/dist/cytoscape.min.js"></script>
+  <script src="../dist/cytoscape-libavoid.umd.js"></script>
+  <script>
+    // small material flow: stores -> processes -> sinks, edge width = quantity
+    const nodes = [
+      ['lager', 'Rohlager', 0, 150], ['zukauf', 'Zukauf', 0, 400],
+      ['saege', 'Säge', 260, 80], ['fraese', 'Fräse', 260, 260], ['drehen', 'Drehen', 260, 440],
+      ['montage', 'Montage', 540, 200], ['lack', 'Lackierung', 540, 420],
+      ['versand', 'Versand', 820, 220], ['schrott', 'Schrott', 820, 460],
+      ['qs', 'QS', 400, 330],
+    ];
+    const flows = [
+      ['lager', 'saege', 18], ['lager', 'fraese', 10], ['zukauf', 'drehen', 12], ['zukauf', 'montage', 6],
+      ['saege', 'montage', 14], ['saege', 'schrott', 3], ['fraese', 'montage', 8], ['fraese', 'lack', 2],
+      ['drehen', 'lack', 9], ['drehen', 'schrott', 2], ['montage', 'versand', 22], ['lack', 'versand', 9],
+      ['montage', 'lack', 4],
+    ];
+    const cy = cytoscape({
+      container: document.getElementById('cy'),
+      layout: { name: 'preset' },
+      elements: [
+        ...nodes.map(([id, label, x, y]) => ({ data: { id, label }, position: { x, y }, classes: id === 'qs' ? 'obstacle' : '' })),
+        ...flows.map(([s, t, q]) => ({ data: { id: `${s}-${t}`, source: s, target: t, q } })),
+      ],
+      style: [
+        { selector: 'node', style: { shape: 'round-rectangle', width: 90, height: 70, 'background-color': '#4a6fa5', label: 'data(label)', color: '#fff', 'text-valign': 'center', 'font-size': 12 } },
+        { selector: 'node.obstacle', style: { 'background-color': '#b0b0b0', color: '#333' } },
+        { selector: 'edge', style: { width: 'data(q)', 'line-color': '#e08a2c', opacity: 0.75, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#e08a2c', 'arrow-scale': 0.6, 'curve-style': 'taxi' } },
+      ],
+    });
+
+    const $ = (id) => document.getElementById(id);
+    const read = () => ({
+      ports: $('ports').value,
+      routingType: $('routingType').value,
+      flowDirection: $('flowDirection').value,
+      cornerRadius: Number($('cornerRadius').value),
+      rerouteOnDrag: $('rerouteOnDrag').checked,
+    });
+
+    const routing = cy.libavoid(read());
+    routing.ready.catch((err) => ($('stats').textContent = 'Fehler: ' + err.message));
+    cy.on('avoidrouted', (_, info) => ($('stats').textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${info.totalMs.toFixed(1)} ms`));
+
+    for (const id of ['ports', 'routingType', 'flowDirection', 'cornerRadius', 'rerouteOnDrag']) $(id).addEventListener('input', () => routing.setOptions(read()));
+
+    let n = 0;
+    $('add').addEventListener('click', () => {
+      const ext = cy.extent();
+      cy.add({ data: { id: `h${n}`, label: `Hindernis ${++n}` }, classes: 'obstacle', position: { x: ext.x1 + Math.random() * ext.w, y: ext.y1 + Math.random() * ext.h } });
+    });
+  </script>
+</body>
+</html>
