@@ -65,11 +65,14 @@ cytoscape-libavoid/
 │   ├── cytoscape-libavoid.umd.js    Bundle für <script>-Tags, globale Variable cytoscapeLibavoid
 │   ├── *.map                        Source Maps
 │   └── libavoid.wasm                libavoid als WebAssembly (~480 kB)
-├── src/
-│   ├── index.js                     Cytoscape-Erweiterung, LibavoidRouting, loadLibavoid
-│   ├── routing.js                   Routing-Kern (routeGraph, computeSankeyPorts, simplify)
-│   ├── edge-style.js                Umrechnung Route → Cytoscape-Segment-Style
-│   └── umd.js                       Einstiegspunkt des UMD-Bundles
+├── lib/                             kompilierte ES-Module + Typdeklarationen (.d.ts) aus src/
+├── src/                             TypeScript-Quellcode
+│   ├── index.ts                     Cytoscape-Erweiterung, LibavoidRouting, loadLibavoid
+│   ├── routing.ts                   Routing-Kern (routeGraph, computeSankeyPorts, simplify)
+│   ├── edge-style.ts                Umrechnung Route → Cytoscape-Segment-Style
+│   ├── libavoid.ts                  Typen für die genutzte libavoid-js-API
+│   └── umd.ts                       Einstiegspunkt des UMD-Bundles
+├── types/libavoid-js.d.ts           ersetzt die unvollständigen Typen von libavoid-js
 ├── demo/
 │   ├── index.html                   Interaktive Demo (Materialfluss)
 │   └── vendor/cytoscape.min.js      Cytoscape für die Demo (nur im ZIP)
@@ -77,9 +80,11 @@ cytoscape-libavoid/
 ├── docs/LIZENZ.md                   lizenzrechtliche Hinweise (LGPL)
 ├── licenses/                        Lizenztexte (LGPL-2.1, Cytoscape MIT)
 ├── THIRD-PARTY-NOTICES.md           verwendete Fremdkomponenten
-├── scripts/build.mjs                Build (esbuild)
-├── scripts/serve.mjs                Mini-Webserver für die Demo
-├── test/routing.test.mjs            Tests (node:test)
+├── scripts/build.ts                 Build (esbuild)
+├── scripts/serve.ts                 Mini-Webserver für die Demo
+├── test/routing.test.ts             Tests (node:test)
+├── tsconfig.json                    Typprüfung (npm run typecheck)
+├── tsconfig.build.json              erzeugt lib/
 ├── LICENSE                          MIT-Lizenz des Plugin-Codes
 ├── package.json
 └── README.md                        Kurzfassung (englisch)
@@ -99,7 +104,7 @@ npm install cytoscape            # Peer-Dependency, falls noch nicht vorhanden
 ```
 
 Dabei wird `libavoid-js` als Abhängigkeit mitinstalliert. Der Import zeigt auf
-`src/index.js`, der Bundler Ihres Projekts übernimmt das Bündeln.
+`lib/index.js` (Typen: `lib/index.d.ts`), der Bundler Ihres Projekts übernimmt das Bündeln.
 
 ```js
 import cytoscape from 'cytoscape';
@@ -646,7 +651,7 @@ Weitere Hebel bei großen Graphen:
 | Problem | Ursache und Lösung |
 |---|---|
 | `ready` wird abgelehnt, 404 auf `libavoid.wasm` | Datei liegt nicht neben dem Bundle bzw. `wasmUrl` stimmt nicht. Den Pfad im Netzwerk-Tab der Browser-Entwicklertools prüfen. |
-| Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `node scripts/serve.mjs`). |
+| Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `node scripts/serve.ts`). |
 | `CompileError` oder CSP-Meldung zu WebAssembly | `'wasm-unsafe-eval'` in `script-src` der Content-Security-Policy ergänzen. |
 | `not ready yet, await routing.ready first` | `route()` wurde vor dem Laden aufgerufen. Erst `await routing.ready`. |
 | Alle Knoten liegen auf (0, 0), Kanten haben keine Route | Ohne `layout` setzt Cytoscape den `null`-Layout ein, der alle Knoten auf (0, 0) legt. `layout: { name: 'preset' }` oder ein echtes Layout angeben. |
@@ -666,9 +671,9 @@ t/Tag.
 **Starten** (Node.js ≥ 18 nötig, aber keine weiteren Pakete):
 
 ```sh
-node scripts/serve.mjs          # im Paketordner
+node scripts/serve.ts           # im Paketordner (Node.js ≥ 22.18)
 # → http://localhost:8080/demo/
-# anderer Port: PORT=3000 node scripts/serve.mjs  (PowerShell: $env:PORT=3000; node scripts/serve.mjs)
+# anderer Port: PORT=3000 node scripts/serve.ts  (PowerShell: $env:PORT=3000; node scripts/serve.ts)
 ```
 
 Die Demo braucht einen Webserver, weil der Browser `.wasm` nicht von
@@ -697,17 +702,18 @@ eine eigene Einbindung per `<script>`-Tag.
 ```sh
 npm install
 npm test          # 8 Tests (node:test), inkl. Integrationstest mit headless Cytoscape
-npm run build     # erzeugt dist/ (ESM, UMD, Source Maps, libavoid.wasm)
+npm run typecheck # Typprüfung mit tsc
+npm run build     # erzeugt lib/ (tsc) und dist/ (ESM, UMD, Source Maps, libavoid.wasm)
 npm run demo      # Build + Demo-Server auf http://localhost:8080/demo/
 ```
 
 Aufbau des Quellcodes:
 
-- `src/routing.js`: Routing-Kern. Kennt nur das einfache Modell und libavoid.
-- `src/edge-style.js`: reine Geometrie, Route ↔ Cytoscape-Style.
-- `src/index.js`: Cytoscape-Anbindung (Modell aus `cy` erzeugen, Styles
+- `src/routing.ts`: Routing-Kern. Kennt nur das einfache Modell und libavoid.
+- `src/edge-style.ts`: reine Geometrie, Route ↔ Cytoscape-Style.
+- `src/index.ts`: Cytoscape-Anbindung (Modell aus `cy` erzeugen, Styles
   setzen, Events, Laden der `.wasm`).
-- `src/umd.js`: Einstieg für das `<script>`-Bundle, registriert sich
+- `src/umd.ts`: Einstieg für das `<script>`-Bundle, registriert sich
   automatisch.
 
 Wichtig beim Arbeiten mit libavoid-js: Jedes mit `new` erzeugte Objekt liegt im

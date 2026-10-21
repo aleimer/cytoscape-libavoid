@@ -5,7 +5,20 @@
 //   S + w_i * (T - S) + d_i * n,   n = (-(T-S).y, (T-S).x) / |T-S|
 // where S/T are the manual endpoints. We invert exactly that.
 
-export const STYLE_PROPS = [
+import type { Point } from './libavoid.ts';
+
+export interface EdgeSegmentStyle {
+  'curve-style': 'segments' | 'round-segments';
+  'edge-distances': 'endpoints';
+  'source-endpoint': string;
+  'target-endpoint': string;
+  'segment-weights': string;
+  'segment-distances': string;
+  'segment-radii'?: number;
+  'radius-type'?: 'arc-radius';
+}
+
+export const STYLE_PROPS: ReadonlyArray<keyof EdgeSegmentStyle> = [
   'curve-style',
   'edge-distances',
   'source-endpoint',
@@ -16,16 +29,21 @@ export const STYLE_PROPS = [
   'radius-type',
 ];
 
-const fmt = (v) => String(Math.round(v * 10000) / 10000);
+const fmt = (v: number): string => String(Math.round(v * 10000) / 10000);
 
 /**
- * @param {Array<{x,y}>} points  route incl. both endpoints
- * @param {{x,y}} srcPos         source node position (centre)
- * @param {{x,y}} tgtPos         target node position (centre)
- * @param {number} cornerRadius  0 = sharp taxi corners, > 0 = rounded corners
- * @returns {object|null} style bypass object, or null if the route is degenerate
+ * @param points        route incl. both endpoints
+ * @param srcPos        source node position (centre)
+ * @param tgtPos        target node position (centre)
+ * @param cornerRadius  0 = sharp taxi corners, > 0 = rounded corners
+ * @returns style bypass object, or null if the route is degenerate
  */
-export function routeToEdgeStyle(points, srcPos, tgtPos, cornerRadius = 0) {
+export function routeToEdgeStyle(
+  points: readonly Point[] | null | undefined,
+  srcPos: Point,
+  tgtPos: Point,
+  cornerRadius = 0,
+): EdgeSegmentStyle | null {
   if (!points || points.length < 2) return null;
   const S = points[0];
   const T = points[points.length - 1];
@@ -40,8 +58,8 @@ export function routeToEdgeStyle(points, srcPos, tgtPos, cornerRadius = 0) {
   let inner = points.slice(1, -1);
   if (inner.length === 0) inner = [{ x: (S.x + T.x) / 2, y: (S.y + T.y) / 2 }];
 
-  const weights = [];
-  const distances = [];
+  const weights: string[] = [];
+  const distances: string[] = [];
   for (const p of inner) {
     const px = p.x - S.x;
     const py = p.y - S.y;
@@ -49,7 +67,7 @@ export function routeToEdgeStyle(points, srcPos, tgtPos, cornerRadius = 0) {
     distances.push(fmt(px * nx + py * ny));
   }
 
-  const style = {
+  const style: EdgeSegmentStyle = {
     'curve-style': cornerRadius > 0 ? 'round-segments' : 'segments',
     'edge-distances': 'endpoints',
     'source-endpoint': `${fmt(S.x - srcPos.x)}px ${fmt(S.y - srcPos.y)}px`,
@@ -65,8 +83,12 @@ export function routeToEdgeStyle(points, srcPos, tgtPos, cornerRadius = 0) {
 }
 
 /** Inverse of routeToEdgeStyle (used by tests): reconstructs absolute points. */
-export function edgeStyleToPoints(style, srcPos, tgtPos) {
-  const parse = (s) => s.split(/\s+/).map(parseFloat);
+export function edgeStyleToPoints(
+  style: Pick<EdgeSegmentStyle, 'source-endpoint' | 'target-endpoint' | 'segment-weights' | 'segment-distances'>,
+  srcPos: Point,
+  tgtPos: Point,
+): Point[] {
+  const parse = (s: string): number[] => s.split(/\s+/).map(parseFloat);
   const [sx, sy] = parse(style['source-endpoint']);
   const [tx, ty] = parse(style['target-endpoint']);
   const S = { x: srcPos.x + sx, y: srcPos.y + sy };

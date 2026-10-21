@@ -4,11 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
 const root = process.cwd();
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.map': 'application/json', '.css': 'text/css' };
+const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.map': 'application/json', '.css': 'text/css' };
 const port = Number(process.env.PORT) || 8080;
 
 createServer(async (req, res) => {
-  let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^[\\/]+/, '');
+  let path = normalize(decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)).replace(/^[\\/]+/, '');
   if (path.startsWith('..')) return res.writeHead(403).end();
   if (!path) return res.writeHead(302, { location: '/demo/' }).end();
   if (/[\\/]$/.test(path)) path += 'index.html';

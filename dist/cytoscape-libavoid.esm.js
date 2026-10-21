@@ -1012,7 +1012,7 @@ ${l}`;
 var Gt = xr;
 var Br = Bt(Gt);
 
-// src/routing.js
+// src/routing.ts
 var DIR = { up: 1, down: 2, left: 4, right: 8, all: 15 };
 var SIDES = ["top", "right", "bottom", "left"];
 var SIDE_DIR = { top: DIR.up, bottom: DIR.down, left: DIR.left, right: DIR.right };
@@ -1054,24 +1054,26 @@ function computeSankeyPorts(model, opts) {
   const slots = /* @__PURE__ */ new Map();
   const ports = /* @__PURE__ */ new Map();
   const push = (nodeId, side2, entry) => {
-    if (!slots.has(nodeId)) slots.set(nodeId, {});
-    const bySide = slots.get(nodeId);
+    let bySide = slots.get(nodeId);
+    if (!bySide) slots.set(nodeId, bySide = {});
     (bySide[side2] || (bySide[side2] = [])).push(entry);
   };
   for (const e of model.edges) {
     const src = nodes.get(e.source);
     const tgt = nodes.get(e.target);
-    const srcSide = e.sourceSide || sides.out;
-    const tgtSide = e.targetSide || sides.in;
-    ports.set(e.id, { source: { side: srcSide }, target: { side: tgtSide } });
-    push(e.source, srcSide, { edge: e, end: "source", sortKey: tgt[cross], tie: e.target });
-    push(e.target, tgtSide, { edge: e, end: "target", sortKey: src[cross], tie: e.source });
+    if (!src || !tgt) continue;
+    const p = { source: { side: e.sourceSide || sides.out, offset: 0.5 }, target: { side: e.targetSide || sides.in, offset: 0.5 } };
+    ports.set(e.id, p);
+    push(e.source, p.source.side, { port: p.source, edge: e, sortKey: tgt[cross], tie: e.target });
+    push(e.target, p.target.side, { port: p.target, edge: e, sortKey: src[cross], tie: e.source });
   }
   for (const [nodeId, bySide] of slots) {
     const node = nodes.get(nodeId);
-    for (const side2 of Object.keys(bySide)) {
+    if (!node) continue;
+    for (const side2 of SIDES) {
       const list = bySide[side2];
-      list.sort((a, b) => a.sortKey - b.sortKey || String(a.tie).localeCompare(String(b.tie)) || String(a.edge.id).localeCompare(String(b.edge.id)));
+      if (!list) continue;
+      list.sort((a, b) => a.sortKey - b.sortKey || a.tie.localeCompare(b.tie) || a.edge.id.localeCompare(b.edge.id));
       const along = side2 === "left" || side2 === "right" ? node.h : node.w;
       const total = list.reduce((s, it) => s + (it.edge.width || 0), 0) + portSpacing * (list.length - 1);
       const scale = total > along && total > 0 ? along / total : 1;
@@ -1080,7 +1082,7 @@ function computeSankeyPorts(model, opts) {
         const w = (it.edge.width || 0) * scale;
         const center = cursor + w / 2;
         cursor += w + portSpacing * scale;
-        ports.get(it.edge.id)[it.end].offset = along > 0 ? clamp(center / along, 0, 1) : 0.5;
+        it.port.offset = along > 0 ? clamp(center / along, 0, 1) : 0.5;
       }
     }
   }
@@ -1093,7 +1095,7 @@ function routeGraph(Avoid, model, options = {}) {
   const sankey = opts.ports === "sankey";
   const maxWidth = edges.reduce((m, e) => Math.max(m, e.width || 0), 0);
   const nudging = opts.idealNudgingDistance === "auto" ? Math.max(4, maxWidth + opts.portSpacing) : opts.idealNudgingDistance;
-  const nudgeConnected = opts.nudgeConnectedSegments === "auto" ? !sankey : !!opts.nudgeConnectedSegments;
+  const nudgeConnected = opts.nudgeConnectedSegments === "auto" ? !sankey : opts.nudgeConnectedSegments;
   const flag = opts.routingType === "polyline" ? Avoid.RouterFlag.PolyLineRouting : Avoid.RouterFlag.OrthogonalRouting;
   const router = new Avoid.Router(flag.value);
   const temps = [];
@@ -1104,8 +1106,8 @@ function routeGraph(Avoid, model, options = {}) {
     setParam(Avoid, router, "idealNudgingDistance", nudging);
     setOption(Avoid, router, "nudgeOrthogonalSegmentsConnectedToShapes", nudgeConnected);
     setOption(Avoid, router, "performUnifyingNudgingPreprocessingStep", false);
-    for (const [k, v] of Object.entries(opts.routingParameters || {})) setParam(Avoid, router, k, v);
-    for (const [k, v] of Object.entries(opts.routingOptions || {})) setOption(Avoid, router, k, v);
+    for (const [k, v] of Object.entries(opts.routingParameters || {})) if (v !== void 0) setParam(Avoid, router, k, v);
+    for (const [k, v] of Object.entries(opts.routingOptions || {})) if (v !== void 0) setOption(Avoid, router, k, v);
     const shapes = /* @__PURE__ */ new Map();
     for (const n of model.nodes) {
       const rect = tmp(new Avoid.Rectangle(P(n.x, n.y), Math.max(n.w, 1), Math.max(n.h, 1)));
@@ -1124,10 +1126,11 @@ function routeGraph(Avoid, model, options = {}) {
     for (const e of edges) {
       const srcShape = shapes.get(e.source);
       const tgtShape = shapes.get(e.target);
+      if (!srcShape || !tgtShape) continue;
       let srcClass = AUTO_PIN_CLASS;
       let tgtClass = AUTO_PIN_CLASS;
-      if (sankey) {
-        const p = ports.get(e.id);
+      const p = ports?.get(e.id);
+      if (p) {
         srcClass = nextClass++;
         tgtClass = nextClass++;
         addPin(Avoid, srcShape, srcClass, p.source.side, p.source.offset, true);
@@ -1167,7 +1170,7 @@ function setParam(Avoid, router, name, value) {
 function setOption(Avoid, router, name, value) {
   const o = Avoid.RoutingOption[name];
   if (!o) throw new Error(`cytoscape-libavoid: unknown routing option "${name}"`);
-  router.setRoutingOption(o, !!value);
+  router.setRoutingOption(o, value);
 }
 var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 function simplify(points) {
@@ -1176,7 +1179,7 @@ function simplify(points) {
   for (const p of pts) {
     const last = out[out.length - 1];
     if (last && last.x === p.x && last.y === p.y) continue;
-    if (out.length >= 2) {
+    if (last && out.length >= 2) {
       const a = out[out.length - 2];
       const cross = (last.x - a.x) * (p.y - a.y) - (last.y - a.y) * (p.x - a.x);
       const sameDir = (last.x - a.x) * (p.x - last.x) + (last.y - a.y) * (p.y - last.y) >= 0;
@@ -1191,7 +1194,7 @@ function simplify(points) {
 }
 var round = (v) => Math.round(v * 1e3) / 1e3;
 
-// src/edge-style.js
+// src/edge-style.ts
 var STYLE_PROPS = [
   "curve-style",
   "edge-distances",
@@ -1253,7 +1256,7 @@ function edgeStyleToPoints(style, srcPos, tgtPos) {
   return [S, ...mid, T];
 }
 
-// src/index.js
+// src/index.ts
 var SCRATCH_KEY = "_libavoid";
 var ROUTED_EVENT = "avoidrouted";
 var defaults = {
@@ -1268,7 +1271,7 @@ var defaults = {
   // selector for nodes acting as obstacles / endpoints
   includeLabels: false,
   // let node labels count as part of the obstacle
-  edgeWidth: (edge) => edge.numericStyle("width"),
+  edgeWidth: (edge) => Number(edge.numericStyle("width")),
   // used for sankey stacking and auto nudging
   cornerRadius: 0,
   // 0 = sharp taxi corners, > 0 = rounded corners ('round-segments')
@@ -1278,7 +1281,8 @@ var defaults = {
   // when live: re-route continuously while dragging (false = only on release)
 };
 var loading = null;
-var scriptSrc = typeof document !== "undefined" && document.currentScript ? document.currentScript.src : void 0;
+var currentScript = typeof document !== "undefined" ? document.currentScript : null;
+var scriptSrc = currentScript && "src" in currentScript ? currentScript.src : void 0;
 function loadLibavoid(wasmUrl) {
   if (!loading) {
     if (wasmUrl === void 0 && scriptSrc) wasmUrl = new URL("libavoid.wasm", scriptSrc).href;
@@ -1292,14 +1296,17 @@ function loadLibavoid(wasmUrl) {
 var schedule = typeof requestAnimationFrame === "function" ? (fn) => requestAnimationFrame(fn) : (fn) => setTimeout(fn, 0);
 var LibavoidRouting = class {
   constructor(cy, options = {}) {
+    __publicField(this, "cy");
+    __publicField(this, "options");
+    __publicField(this, "ready");
+    __publicField(this, "Avoid", null);
+    __publicField(this, "routes", /* @__PURE__ */ new Map());
+    __publicField(this, "styled", /* @__PURE__ */ new Set());
+    __publicField(this, "destroyed", false);
+    __publicField(this, "_pending", false);
+    __publicField(this, "_listeners", []);
     this.cy = cy;
     this.options = { ...defaults, ...options };
-    this.Avoid = null;
-    this.routes = /* @__PURE__ */ new Map();
-    this.styled = /* @__PURE__ */ new Set();
-    this.destroyed = false;
-    this._pending = false;
-    this._listeners = [];
     const instance = this.options.avoidLib ? Promise.resolve(this.options.avoidLib) : loadLibavoid(this.options.wasmUrl);
     this.ready = instance.then((Avoid) => {
       if (this.destroyed) return this;
@@ -1314,7 +1321,7 @@ var LibavoidRouting = class {
     const { cy, options } = this;
     const nodes = cy.nodes(options.obstacles).filter((n) => n.visible());
     const nodeIds = new Set(nodes.map((n) => n.id()));
-    const edges = cy.edges(options.edges).filter((e) => e.visible() && nodeIds.has(e.source().id()) && nodeIds.has(e.target().id()));
+    const edges = cy.edges(options.edges).toArray().filter((e) => e.visible() && nodeIds.has(e.source().id()) && nodeIds.has(e.target().id()));
     return {
       nodes: nodes.map((n) => {
         const bb = n.boundingBox({ includeLabels: options.includeLabels, includeOverlays: false });
@@ -1356,7 +1363,8 @@ var LibavoidRouting = class {
       }
     });
     this.routes = routes;
-    cy.emit(ROUTED_EVENT, [{ edges: routes.size, routingMs: t1 - t0, totalMs: now() - t0 }]);
+    const info = { edges: routes.size, routingMs: t1 - t0, totalMs: now() - t0 };
+    cy.emit(ROUTED_EVENT, [info]);
     return routes;
   }
   /** Coalesces many change events into one re-route per animation frame. */
@@ -1408,7 +1416,8 @@ var LibavoidRouting = class {
     this._on("class style", "node", reroute);
     this._on("class", "edge", reroute);
     this._on("position", "node", (evt) => {
-      if (this.options.rerouteOnDrag || !evt.target.grabbed()) reroute();
+      const node = evt.target;
+      if (this.options.rerouteOnDrag || !node.grabbed()) reroute();
     });
     this._on("free", "node", reroute);
   }
@@ -1417,12 +1426,13 @@ var LibavoidRouting = class {
     this._listeners = [];
   }
 };
-var side = (v) => SIDES.includes(v) ? v : void 0;
+var side = (v) => SIDES.find((s) => s === v);
 var now = () => typeof performance !== "undefined" ? performance.now() : Date.now();
 function register(cytoscape) {
   if (!cytoscape) return;
   cytoscape("core", "libavoid", function(options) {
-    const current = this.scratch(SCRATCH_KEY);
+    const stored = this.scratch(SCRATCH_KEY);
+    const current = stored instanceof LibavoidRouting ? stored : void 0;
     if (current && !options) return current;
     if (current) current.destroy();
     const routing = new LibavoidRouting(this, options);

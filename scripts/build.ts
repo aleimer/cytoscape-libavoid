@@ -1,4 +1,5 @@
 import { build } from 'esbuild';
+import type { BuildOptions } from 'esbuild';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -14,17 +15,22 @@ const banner = {
  * both licensed under LGPL-2.1-or-later: https://github.com/Aksem/libavoid-js, https://github.com/mjwybrow/adaptagrams
  * See THIRD-PARTY-NOTICES.md and licenses/LGPL-2.1.txt. */`,
 };
-const common = { bundle: true, sourcemap: true, target: 'es2020', platform: 'browser', logLevel: 'info', banner };
+const common: BuildOptions = {
+  // ignore tsconfig.json: its `paths` entry points libavoid-js at a type-only stub
+  tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
+  bundle: true, sourcemap: true, target: 'es2020', platform: 'browser', logLevel: 'info',
+  banner,
+};
 
-await build({ ...common, entryPoints: ['src/index.js'], format: 'esm', outfile: 'dist/cytoscape-libavoid.esm.js' });
+await build({ ...common, entryPoints: ['src/index.ts'], format: 'esm', outfile: 'dist/cytoscape-libavoid.esm.js' });
 await build({
   ...common,
-  entryPoints: ['src/umd.js'],
+  entryPoints: ['src/umd.ts'],
   format: 'iife',
   globalName: 'cytoscapeLibavoid',
   footer: { js: 'cytoscapeLibavoid = cytoscapeLibavoid.default;' },
   outfile: 'dist/cytoscape-libavoid.umd.js',
-  // import.meta.url is meaningless in a classic script; src/index.js falls back to document.currentScript
+  // import.meta.url is meaningless in a classic script; src/index.ts falls back to document.currentScript
   define: { 'import.meta.url': 'undefined' },
 });
 await copyFile(join(libavoidDist, 'libavoid.wasm'), 'dist/libavoid.wasm');

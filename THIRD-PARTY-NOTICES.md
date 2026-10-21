@@ -35,7 +35,7 @@ It includes or uses the following third-party software, which keeps its own lice
 ## Replacing libavoid
 
 As required by the LGPL, you may replace or modify libavoid / libavoid-js:
-the plugin source (`src/`) and build script (`scripts/build.mjs`) are included,
+the plugin source (`src/`) and build script (`scripts/build.ts`) are included,
 so the bundles can be rebuilt against a modified libavoid-js (`npm install
 <your libavoid-js>` followed by `npm run build`). `libavoid.wasm` is loaded as a
 separate file at runtime.

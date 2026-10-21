@@ -110,8 +110,9 @@ The routing core is renderer-independent and exported as well:
 
 ```sh
 npm install
+npm run typecheck  # tsc --noEmit over src, tests and scripts
 npm test        # node:test, incl. a headless Cytoscape integration test
-npm run build   # dist/: ESM + UMD bundle, libavoid.wasm
+npm run build   # lib/ (ES modules + .d.ts) and dist/: ESM + UMD bundle, libavoid.wasm
 npm run demo    # build and serve the demo at http://localhost:8080/demo/
 ```
 

@@ -1,23 +1,31 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import cytoscape from 'cytoscape';
-import register, { loadLibavoid, routeGraph, routeToEdgeStyle, edgeStyleToPoints, computeSankeyPorts } from '../src/index.js';
+import register, { loadLibavoid, routeGraph, routeToEdgeStyle, edgeStyleToPoints, computeSankeyPorts } from '../src/index.ts';
+import type { Avoid as AvoidInstance, GraphEdge, GraphModel, GraphNode, Point, RoutingOptions } from '../src/index.ts';
 
-let Avoid;
+interface Rect {
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+}
+
+let Avoid: AvoidInstance;
 before(async () => {
   Avoid = await loadLibavoid();
   register(cytoscape);
 });
 
-const box = (n, pad = 0) => ({ x1: n.x - n.w / 2 - pad, x2: n.x + n.w / 2 + pad, y1: n.y - n.h / 2 - pad, y2: n.y + n.h / 2 + pad });
+const box = (n: GraphNode, pad = 0): Rect => ({ x1: n.x - n.w / 2 - pad, x2: n.x + n.w / 2 + pad, y1: n.y - n.h / 2 - pad, y2: n.y + n.h / 2 + pad });
 
 // does the axis-aligned segment a-b cross the open interior of rect r?
-function segmentHitsRect(a, b, r) {
+function segmentHitsRect(a: Point, b: Point, r: Rect): boolean {
   const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
   return x1 < r.x2 && x2 > r.x1 && y1 < r.y2 && y2 > r.y1;
 }
 
-const obstacleModel = {
+const obstacleModel: GraphModel = {
   nodes: [
     { id: 'a', x: 0, y: 0, w: 60, h: 40 },
     { id: 'b', x: 300, y: 0, w: 60, h: 40 },
@@ -29,7 +37,7 @@ const obstacleModel = {
 test('orthogonal routes avoid obstacles and only use axis-aligned segments', () => {
   const routes = routeGraph(Avoid, obstacleModel);
   const pts = routes.get('ab');
-  assert.ok(pts.length >= 4, `expected a detour, got ${JSON.stringify(pts)}`);
+  assert.ok(pts && pts.length >= 4, `expected a detour, got ${JSON.stringify(pts)}`);
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
     assert.ok(a.x === b.x || a.y === b.y, `segment ${i} not orthogonal`);
@@ -39,7 +47,8 @@ test('orthogonal routes avoid obstacles and only use axis-aligned segments', () 
 
 test('auto ports start and end on the node border', () => {
   const pts = routeGraph(Avoid, obstacleModel).get('ab');
-  const onBorder = (p, n) => {
+  assert.ok(pts);
+  const onBorder = (p: Point, n: GraphNode): boolean => {
     const r = box(n);
     const inside = p.x >= r.x1 - 0.01 && p.x <= r.x2 + 0.01 && p.y >= r.y1 - 0.01 && p.y <= r.y2 + 0.01;
     const edge = [r.x1, r.x2].some((v) => Math.abs(p.x - v) < 0.01) || [r.y1, r.y2].some((v) => Math.abs(p.y - v) < 0.01);
@@ -50,7 +59,7 @@ test('auto ports start and end on the node border', () => {
 });
 
 test('sankey ports stack flows by width on the flow sides without overlap', () => {
-  const model = {
+  const model: GraphModel = {
     nodes: [
       { id: 's', x: 0, y: 0, w: 40, h: 120 },
       { id: 't1', x: 300, y: -100, w: 40, h: 60 },
@@ -63,10 +72,10 @@ test('sankey ports stack flows by width on the flow sides without overlap', () =
       { id: 'e2', source: 's', target: 't2', width: 20 },
     ],
   };
-  const opts = { ports: 'sankey', flowDirection: 'right', portSpacing: 2 };
+  const opts: Partial<RoutingOptions> = { ports: 'sankey', flowDirection: 'right', portSpacing: 2 };
   const ports = computeSankeyPorts(model, opts);
   // sorted top -> bottom by target y: e1, e2, e3
-  const o = ['e1', 'e2', 'e3'].map((id) => ports.get(id).source.offset * 120);
+  const o = ['e1', 'e2', 'e3'].map((id) => (ports.get(id)?.source.offset ?? NaN) * 120);
   assert.ok(o[0] < o[1] && o[1] < o[2]);
   assert.ok(Math.abs(o[1] - o[0] - (5 + 2 + 10)) < 1e-9, 'e1/e2 bands touch with spacing');
   assert.ok(Math.abs(o[2] - o[1] - (10 + 2 + 15)) < 1e-9, 'e2/e3 bands touch with spacing');
@@ -76,22 +85,25 @@ test('sankey ports stack flows by width on the flow sides without overlap', () =
     assert.equal(pts[0].x, 20, `${id} leaves on the right side`);
     assert.equal(pts[pts.length - 1].x, 280, `${id} enters on the left side`);
   }
-  assert.ok(Math.abs(routes.get('e1')[0].y - (o[0] - 60)) < 1e-6, 'route starts at the computed port');
+  const e1 = routes.get('e1');
+  assert.ok(e1);
+  assert.ok(Math.abs(e1[0].y - (o[0] - 60)) < 1e-6, 'route starts at the computed port');
 });
 
 test('sankey ports are squeezed when flows do not fit onto a side', () => {
-  const model = {
+  const model: GraphModel = {
     nodes: [{ id: 's', x: 0, y: 0, w: 40, h: 20 }, { id: 't', x: 200, y: 0, w: 40, h: 20 }],
     edges: [{ id: 'a', source: 's', target: 't', width: 30 }, { id: 'b', source: 's', target: 't', width: 30 }],
   };
   const ports = computeSankeyPorts(model, { flowDirection: 'right', portSpacing: 0 });
   for (const p of ports.values()) assert.ok(p.source.offset >= 0 && p.source.offset <= 1);
-  assert.notEqual(ports.get('a').source.offset, ports.get('b').source.offset);
+  assert.notEqual(ports.get('a')?.source.offset, ports.get('b')?.source.offset);
 });
 
 test('route -> cytoscape segment style round trip is exact', () => {
   const pts = [{ x: 30, y: -12 }, { x: 71, y: -12 }, { x: 71, y: -154 }, { x: 270, y: -154 }];
   const style = routeToEdgeStyle(pts, { x: 0, y: 0 }, { x: 300, y: -150 });
+  assert.ok(style);
   assert.equal(style['curve-style'], 'segments');
   assert.equal(style['source-endpoint'], '30px -12px');
   const back = edgeStyleToPoints(style, { x: 0, y: 0 }, { x: 300, y: -150 });
@@ -102,6 +114,7 @@ test('route -> cytoscape segment style round trip is exact', () => {
 
 test('straight routes still produce a valid segments style', () => {
   const style = routeToEdgeStyle([{ x: 0, y: 0 }, { x: 100, y: 0 }], { x: -10, y: 0 }, { x: 110, y: 0 }, 5);
+  assert.ok(style);
   assert.equal(style['curve-style'], 'round-segments');
   assert.equal(style['segment-weights'], '0.5');
   assert.equal(style['segment-distances'], '0');
@@ -132,11 +145,11 @@ test('cy.libavoid() styles edges, re-routes on move and restores on destroy', as
   const edge = cy.$id('ab');
   assert.equal(edge.style('curve-style'), 'segments');
   const before = routing.getRoute('ab');
-  assert.ok(before.length >= 4, 'routed around c');
+  assert.ok(before && before.length >= 4, 'routed around c');
 
   cy.$id('c').position({ x: 150, y: 300 }); // move obstacle out of the way
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(routing.getRoute(edge).length, 2, 'straight after obstacle moved');
+  assert.equal(routing.getRoute(edge)?.length, 2, 'straight after obstacle moved');
   assert.ok(events >= 2);
 
   routing.destroy();
@@ -146,8 +159,8 @@ test('cy.libavoid() styles edges, re-routes on move and restores on destroy', as
 });
 
 test('rebuild performance for a mid-sized flow graph', () => {
-  const nodes = [];
-  const edges = [];
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
   for (let col = 0; col < 8; col++)
     for (let row = 0; row < 8; row++) nodes.push({ id: `n${col}_${row}`, x: col * 220, y: row * 120, w: 60, h: 50 });
   let k = 0;
@@ -156,7 +169,7 @@ test('rebuild performance for a mid-sized flow graph', () => {
       edges.push({ id: `e${k++}`, source: `n${col}_${row}`, target: `n${col + 1}_${(row * 3 + 1) % 8}`, width: 2 + (k % 10) });
       edges.push({ id: `e${k++}`, source: `n${col}_${row}`, target: `n${Math.min(7, col + 2)}_${(row + 5) % 8}`, width: 2 + (k % 7) });
     }
-  for (const ports of ['auto', 'sankey']) {
+  for (const ports of ['auto', 'sankey'] as const) {
     const t = performance.now();
     const routes = routeGraph(Avoid, { nodes, edges }, { ports });
     const ms = performance.now() - t;
