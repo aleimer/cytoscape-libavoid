@@ -36,13 +36,21 @@ export declare class LibavoidRouting {
     styled: Set<string>;
     destroyed: boolean;
     private _pending;
+    private _modelKey;
+    private _applied;
     private _listeners;
     constructor(cy: Core, options?: Partial<LibavoidOptions>);
     /** Builds the plain graph model handed to the routing core. */
     model(): GraphModel;
     /** Routes all edges now. Returns a Map edge id -> route points. */
     route(): Map<string, Point[]>;
-    /** Coalesces many change events into one re-route per animation frame. */
+    private _route;
+    /**
+     * Coalesces many change events into one re-route per animation frame, and
+     * skips it when the routing input did not change: style / data events also
+     * fire for changes that do not move anything, e.g. live data, or (with
+     * compound nodes) for every node whenever edge styles are set by route().
+     */
     scheduleRoute(): void;
     /** Route points of an edge (edge element or id), or undefined if not routed. */
     getRoute(edge: EdgeSingular | string): Point[] | undefined;

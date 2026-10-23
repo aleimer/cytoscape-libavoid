@@ -1341,6 +1341,9 @@ ${l}`;
       __publicField(this, "styled", /* @__PURE__ */ new Set());
       __publicField(this, "destroyed", false);
       __publicField(this, "_pending", false);
+      __publicField(this, "_modelKey", "");
+      // edge id -> element + style last applied to it, to skip unchanged edges
+      __publicField(this, "_applied", /* @__PURE__ */ new Map());
       __publicField(this, "_listeners", []);
       this.cy = cy;
       this.options = { ...defaults, ...options };
@@ -1378,9 +1381,13 @@ ${l}`;
     route() {
       if (this.destroyed) return this.routes;
       if (!this.Avoid) throw new Error("cytoscape-libavoid: not ready yet, await routing.ready first");
+      return this._route(this.model());
+    }
+    _route(model) {
       const { cy, options } = this;
       const t0 = now();
-      const routes = routeGraph(this.Avoid, this.model(), options);
+      const routes = routeGraph(this.Avoid, model, options);
+      this._modelKey = JSON.stringify(model);
       const t1 = now();
       cy.batch(() => {
         for (const id of this.styled) {
@@ -1388,15 +1395,20 @@ ${l}`;
             const edge = cy.getElementById(id);
             if (edge.nonempty()) edge.removeStyle(STYLE_PROPS.join(" "));
             this.styled.delete(id);
+            this._applied.delete(id);
           }
         }
         for (const [id, points] of routes) {
           const edge = cy.getElementById(id);
           const style = routeToEdgeStyle(points, edge.source().position(), edge.target().position(), options.cornerRadius);
           if (!style) continue;
+          const key = JSON.stringify(style);
+          const prev = this._applied.get(id);
+          if (prev && prev.ele === edge[0] && prev.key === key) continue;
           if (!(options.cornerRadius > 0)) edge.removeStyle("segment-radii radius-type");
           edge.style(style);
           this.styled.add(id);
+          this._applied.set(id, { ele: edge[0], key });
         }
       });
       this.routes = routes;
@@ -1404,13 +1416,20 @@ ${l}`;
       cy.emit(ROUTED_EVENT, [info]);
       return routes;
     }
-    /** Coalesces many change events into one re-route per animation frame. */
+    /**
+     * Coalesces many change events into one re-route per animation frame, and
+     * skips it when the routing input did not change: style / data events also
+     * fire for changes that do not move anything, e.g. live data, or (with
+     * compound nodes) for every node whenever edge styles are set by route().
+     */
     scheduleRoute() {
       if (this._pending || this.destroyed || !this.Avoid) return;
       this._pending = true;
       schedule(() => {
         this._pending = false;
-        if (!this.destroyed) this.route();
+        if (this.destroyed) return;
+        const model = this.model();
+        if (JSON.stringify(model) !== this._modelKey) this._route(model);
       });
     }
     /** Route points of an edge (edge element or id), or undefined if not routed. */
@@ -1439,6 +1458,7 @@ ${l}`;
         }
       });
       this.styled.clear();
+      this._applied.clear();
       this.routes.clear();
       if (cy.scratch(SCRATCH_KEY) === this) cy.removeScratch(SCRATCH_KEY);
     }

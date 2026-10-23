@@ -158,6 +158,48 @@ test('cy.libavoid() styles edges, re-routes on move and restores on destroy', as
   cy.destroy();
 });
 
+test('live routing settles with compound nodes and ignores changes that move nothing', async () => {
+  // with compounds, setting edge styles fires 'style' on all nodes, which used to re-route forever
+  const cy = cytoscape({
+    headless: true,
+    styleEnabled: true,
+    layout: { name: 'preset' },
+    elements: [
+      { data: { id: 'g1' } },
+      { data: { id: 'g2' } },
+      { data: { id: 'a', parent: 'g1' }, position: { x: 0, y: 0 } },
+      { data: { id: 'b', parent: 'g2' }, position: { x: 300, y: 0 } },
+      { data: { id: 'c' }, position: { x: 150, y: 0 } },
+      { data: { id: 'ab', source: 'a', target: 'b' } },
+    ],
+    style: [
+      { selector: 'node', style: { width: 40, height: 40, shape: 'rectangle' } },
+      { selector: 'edge', style: { width: 3, 'curve-style': 'taxi' } },
+    ],
+  });
+  let events = 0;
+  cy.on('avoidrouted', () => events++);
+  const routing = cy.libavoid({ avoidLib: Avoid });
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+  try {
+    await routing.ready;
+    await tick();
+    await tick();
+    assert.equal(events, 1, 'no re-routes after the initial one');
+
+    cy.$id('a').data('value', 42); // live data, same geometry
+    await tick();
+    assert.equal(events, 1, 'data change without geometry change does not re-route');
+
+    cy.$id('c').position({ x: 150, y: 300 });
+    await tick();
+    assert.equal(events, 2, 'moving an obstacle re-routes once');
+    assert.equal(routing.getRoute('ab')?.length, 2);
+  } finally {
+    cy.destroy(); // also stops a runaway re-route loop, so a regression fails instead of hanging
+  }
+});
+
 test('rebuild performance for a mid-sized flow graph', () => {
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
