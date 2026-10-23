@@ -10,5 +10,7 @@
     "rootDir": "src",
     "outDir": "lib"
   },
-  "include": ["src", "types"]
+  "include": ["src", "types"],
+  // bundled by esbuild only (imports the inlined wasm); its API equals lib/index.d.ts
+  "exclude": ["src/standalone.ts"]
 }

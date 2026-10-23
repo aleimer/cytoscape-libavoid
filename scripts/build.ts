@@ -33,5 +33,19 @@ await build({
   // import.meta.url is meaningless in a classic script; src/index.ts falls back to document.currentScript
   define: { 'import.meta.url': 'undefined' },
 });
+// Single file for quick testing: ESM with libavoid.wasm inlined, no wasmUrl needed.
+await build({
+  ...common,
+  entryPoints: ['src/standalone.ts'],
+  format: 'esm',
+  outfile: 'dist/cytoscape-libavoid.standalone.js',
+  loader: { '.wasm': 'dataurl' },
+  plugins: [{
+    name: 'libavoid-wasm',
+    setup(b) {
+      b.onResolve({ filter: /^virtual:libavoid-wasm$/ }, () => ({ path: join(libavoidDist, 'libavoid.wasm') }));
+    },
+  }],
+});
 await copyFile(join(libavoidDist, 'libavoid.wasm'), 'dist/libavoid.wasm');
 console.log('copied libavoid.wasm -> dist/');

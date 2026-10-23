@@ -36,6 +36,20 @@ const routing = cy.libavoid({
 await routing.ready; // edges are routed now
 ```
 
+### Single file (for testing)
+
+`dist/cytoscape-libavoid.standalone.js` is one ES module with `libavoid.wasm`
+inlined (~715 kB), so no `wasmUrl` is needed. Browser only.
+
+```ts
+import cytoscape from 'cytoscape';
+import cytoscapeLibavoid from 'cytoscape-libavoid/standalone'; // or a copy of the file
+
+cytoscape.use(cytoscapeLibavoid);
+const routing = cytoscape({ /* … */ }).libavoid({ ports: 'sankey' });
+await routing.ready;
+```
+
 ### Script tag
 
 ```html
