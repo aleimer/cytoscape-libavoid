@@ -1,0 +1,14 @@
+html, body { margin: 0; height: 100%; }
+
+/* node-html-label cards are rendered outside the component, so they are styled globally */
+.node-card {
+  width: 108px;
+  font: 10px system-ui, sans-serif;
+  color: #1f2328;
+}
+.node-card__head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.node-card svg { display: block; margin: 0 auto; }

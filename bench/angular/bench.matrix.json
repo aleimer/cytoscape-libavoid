@@ -1,0 +1,13 @@
+{
+  "size": "M",
+  "zones": ["zone", "zone-outside", "zoneless"],
+  "scenarios": ["idle", "drag", "panzoom", "data", "addRemove", "collapseExpand"],
+  "runs": [
+    { "name": "cytoscape only", "plugins": [] },
+    { "name": "plugins, no libavoid", "plugins": ["gridGuide", "expandCollapse", "htmlLabel"] },
+    { "name": "libavoid only", "plugins": ["libavoid"], "ports": "sankey" },
+    { "name": "all, sankey", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "sankey" },
+    { "name": "all, auto ports", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "auto" },
+    { "name": "all, sankey, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "sankey", "rerouteOnDrag": false }
+  ]
+}

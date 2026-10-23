@@ -1,0 +1,37 @@
+{
+  "name": "cytoscape-bench",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "lib": "node scripts/lib.ts",
+    "bench": "node scripts/run.ts"
+  },
+  "private": true,
+  "packageManager": "npm@11.12.1",
+  "dependencies": {
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "cytoscape": "^3.34.4",
+    "cytoscape-expand-collapse": "^4.1.1",
+    "cytoscape-grid-guide": "^2.3.3",
+    "cytoscape-libavoid": "file:vendor/cytoscape-libavoid-0.1.0.tgz",
+    "cytoscape-node-html-label": "^1.2.2",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "^0.16.3"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.2.4",
+    "@angular/cli": "^22.2.4",
+    "@angular/compiler-cli": "^22.2.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2"
+  },
+  "type": "module"
+}

@@ -19,5 +19,7 @@
     // libavoid-js ships incomplete typings that fall back to `any`
     "paths": { "libavoid-js": ["./types/libavoid-js.d.ts"] }
   },
-  "include": ["src", "test", "bench", "scripts", "types"]
+  "include": ["src", "test", "bench", "scripts", "types"],
+  // separate Angular project with its own tsconfig
+  "exclude": ["bench/angular"]
 }
