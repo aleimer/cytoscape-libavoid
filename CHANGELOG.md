@@ -54,6 +54,11 @@ Angular bench, 128 nodes / 182 edges, docking ports, dragging a node:
 | `dragRouteInterval: 'auto'` | 107 | 1278 ms |
 | with `worker` | 168 | 697 ms |
 
+With the production plugin mix (grid-guide, expand-collapse, node-html-label)
+on the same graph, dragging went from 18.8 fps (0.1.0) to 42.5 fps, and to
+70.4 fps with `worker` – close to the 74.2 fps of those plugins without
+libavoid.
+
 ## 0.1.0
 
 First version: npm package with ESM, UMD and standalone builds.
