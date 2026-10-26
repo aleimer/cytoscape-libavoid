@@ -192,8 +192,8 @@ const routing = cy.libavoid({ worker, wasmUrl: 'libavoid.wasm' });
 `src/routing.worker.ts` is the worker entry; Angular, Vite and webpack 5 bundle
 it from the `new URL(...)` pattern above. Only one request is in flight at a
 time; changes made meanwhile are sent as soon as it is answered. In the Angular
-bench (128 nodes, docking ports) a drag runs at 168 fps with a worker vs. 107
-fps without, adding and removing nodes costs 48 ms instead of 260 ms of script
+bench (128 nodes, docking ports) a drag runs at 175 fps with a worker vs. 87
+fps without, adding and removing nodes costs 48 ms instead of 650 ms of script
 time. `route()` is synchronous and therefore not available with a worker; use
 `refresh()`. The demo runs with a worker via `?worker=1`.
 

@@ -710,8 +710,8 @@ await routing.ready;
   nicht; bei Bedarf `worker.terminate()` selbst aufrufen.
 
 Im Angular-Benchmark (Graph M, Docking Ports) läuft das Ziehen mit Worker mit
-168 fps statt 107 fps ohne, ohne lange Tasks im Haupt-Thread; Knoten
-hinzufügen und entfernen kostet 48 ms statt 260 ms Skriptzeit. Die Demo nutzt
+175 fps statt 87 fps ohne, ohne lange Tasks im Haupt-Thread; Knoten
+hinzufügen und entfernen kostet 48 ms statt 650 ms Skriptzeit. Die Demo nutzt
 den Worker mit `?worker=1`.
 
 ## 12. Performance
@@ -740,10 +740,10 @@ Nudging für den ganzen Graphen neu rechnet.
 
 **Ziehen:** Mit `dragRouteInterval: 'auto'` (Standard) wartet das Plugin
 während des Ziehens nach jedem Lauf so lange, wie der Lauf gedauert hat. Im
-Angular-Benchmark (Graph M, Knoten 1,5 s lang ziehen) steigt die Bildrate
-dadurch von 22 auf 105 fps, die Skriptzeit sinkt von 7,2 s auf 1,3 s. Die
-Kanten folgen dann etwa fünfmal pro Sekunde, beim Loslassen wird die
-Endposition geroutet.
+Angular-Benchmark (Graph M, Knoten ziehen) steigt die Bildrate dadurch von
+16 auf 87 fps, die Skriptzeit sinkt von 9,9 s auf 1,5 s. Die Kanten folgen dann
+etwa fünfmal pro Sekunde; während des Ziehens wird ohne Umwege geroutet
+(Entwurf), beim Loslassen wird die Endposition vollständig geroutet.
 
 Die libavoid-Option `performUnifyingNudgingPreprocessingStep` ist
 standardmäßig ausgeschaltet. Eingeschaltet steigt die Zeit für einen Graphen

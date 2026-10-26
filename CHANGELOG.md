@@ -73,18 +73,18 @@ nodes: ~200 ms instead of ~80 ms). Drags route drafts without detours and
 route once more in full on release; with `worker` it stays off the main
 thread.
 
-Angular bench, 128 nodes / 182 edges, docking ports, dragging a node:
+Angular bench, 128 nodes / 182 edges, docking ports, dragging a node
+(incl. separating overlaps and the full run with detours on release):
 
 | | fps | main-thread script |
 |---|--:|--:|
-| 0.1.0 (re-route every frame) | 22 | 7230 ms |
-| `dragRouteInterval: 'auto'` | 107 | 1278 ms |
-| with `worker` | 168 | 697 ms |
+| re-route every frame (as in 0.1.0) | 16 | 9874 ms |
+| `dragRouteInterval: 'auto'` | 87 | 1532 ms |
+| with `worker` | 175 | 721 ms |
 
 With the production plugin mix (grid-guide, expand-collapse, node-html-label)
-on the same graph, dragging went from 18.8 fps (0.1.0) to 42.5 fps, and to
-70.4 fps with `worker` – close to the 74.2 fps of those plugins without
-libavoid.
+on the same graph, dragging went from 18.8 fps (0.1.0) to 35.5 fps, and to
+73.7 fps with `worker` – about the 74 fps of those plugins without libavoid.
 
 ## 0.1.0
 
