@@ -6,6 +6,7 @@
     { "name": "cytoscape only", "plugins": [] },
     { "name": "plugins, no libavoid", "plugins": ["gridGuide", "expandCollapse", "htmlLabel"] },
     { "name": "libavoid only", "plugins": ["libavoid"], "ports": "docking" },
+    { "name": "libavoid only, route every frame", "plugins": ["libavoid"], "ports": "docking", "dragRouteInterval": 0 },
     { "name": "all, docking", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking" },
     { "name": "all, auto ports", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "auto" },
     { "name": "all, docking, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking", "rerouteOnDrag": false }

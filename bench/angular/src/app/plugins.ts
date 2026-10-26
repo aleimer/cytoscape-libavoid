@@ -98,6 +98,7 @@ export async function attachPlugins(cy: Core, config: BenchConfig): Promise<void
       flowDirection: 'right',
       cornerRadius: config.cornerRadius,
       rerouteOnDrag: config.rerouteOnDrag,
+      dragRouteInterval: config.dragRouteInterval,
       wasmUrl: 'libavoid.wasm', // copied next to index.html by angular.json
     });
     await routing.ready;

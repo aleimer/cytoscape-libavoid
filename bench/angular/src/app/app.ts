@@ -51,6 +51,14 @@ declare global {
         </select>
       </label>
       <label><input type="checkbox" [checked]="draft().rerouteOnDrag" (change)="set('rerouteOnDrag', !draft().rerouteOnDrag)" /> rerouteOnDrag</label>
+      <label>dragRouteInterval
+        <select [value]="draft().dragRouteInterval" (change)="set('dragRouteInterval', $any($event.target).value === 'auto' ? 'auto' : +$any($event.target).value)">
+          <option value="auto">auto</option>
+          <option value="0">0 (every frame)</option>
+          <option value="100">100 ms</option>
+          <option value="250">250 ms</option>
+        </select>
+      </label>
       <button (click)="apply()">Apply (reload)</button>
       <span class="sep"></span>
       @for (s of scenarios(); track s.name) {

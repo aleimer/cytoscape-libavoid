@@ -20,6 +20,7 @@ interface MatrixRun {
   plugins: string[];
   ports?: 'auto' | 'docking';
   rerouteOnDrag?: boolean;
+  dragRouteInterval?: number | 'auto';
 }
 
 interface Matrix {
@@ -167,6 +168,7 @@ for (const run of runs) {
       plugins: run.plugins.join(','),
       ports: run.ports ?? 'docking',
       drag: run.rerouteOnDrag === false ? '0' : '1',
+      interval: String(run.dragRouteInterval ?? 'auto'),
     });
     pageErrors.length = 0;
     await send('Page.navigate', { url: `${base}?${q}` });
