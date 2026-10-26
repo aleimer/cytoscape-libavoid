@@ -22,6 +22,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - name: src/ compiles with the oldest supported TypeScript
+        run: npx --yes -p typescript@5.0 tsc -p tsconfig.strict.json
       - run: npm run format:check
       - run: npm test
       - run: npm run build:demo

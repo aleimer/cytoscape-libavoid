@@ -14,7 +14,8 @@ npm install -D @types/cytoscape   # only for cytoscape < 3.31, newer versions sh
 Requirements: `moduleResolution: "bundler"` (or `"node"`) and `skipLibCheck: true`
 (the default in Angular / Vite templates; libavoid-js ships broken `.d.ts` files).
 The sources compile with every strictness flag on (incl. `exactOptionalPropertyTypes`
-and `noUncheckedIndexedAccess`) and need no library newer than ES2020.
+and `noUncheckedIndexedAccess`), need no library newer than ES2020 and
+TypeScript 5.0 or newer.
 
 ## 2. Serve libavoid.wasm
 

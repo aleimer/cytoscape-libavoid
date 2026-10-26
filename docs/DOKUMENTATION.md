@@ -108,7 +108,8 @@ den Ihr Projekt selbst mitkompiliert (Angular, Vite, webpack, esbuild …).
    mitliefert. `moduleResolution` muss `"bundler"` oder `"node"` sein. Die
    Quellen kompilieren auch mit allen Strenge-Optionen (u. a.
    `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`) und brauchen
-   keine Bibliothek neuer als ES2020; geprüft mit `tsconfig.strict.json`.
+   keine Bibliothek neuer als ES2020 und TypeScript ab 5.0; geprüft mit
+   `tsconfig.strict.json`.
 4. Registrieren und verwenden:
 
    ```ts
