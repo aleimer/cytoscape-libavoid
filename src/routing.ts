@@ -150,6 +150,12 @@ const FLOW_SIDES: Record<FlowDirection, { out: Side; in: Side }> = {
 /** With `ports: 'auto'` every edge attaches to the same four pins of a node. */
 const SHARED_PIN_CLASS = 1;
 const MIN_NUDGING_DISTANCE = 4;
+/**
+ * Share of the edges that may get a detour, those passing through over the longest
+ * distance first. 30 % worked best on the bench graphs; more checkpoints make the
+ * second libavoid run slower without reducing the overlaps much further.
+ */
+const MAX_DETOUR_SHARE = 0.3;
 /** libavoid needs a non-empty rectangle. */
 const MIN_SHAPE_SIZE = 1;
 
@@ -181,7 +187,13 @@ export class EdgeRouter {
     if (!this.options.detourCrowded) return result;
     // with docking ports a detour against the edge's direction becomes a loop around its node
     const onTheWay = this.usesDockingPorts;
-    const detours = findDetours(routes, routable, { spacing: portSpacing, clearance: shapeBufferDistance, onTheWay });
+    const maxDetours = Math.ceil(MAX_DETOUR_SHARE * routable.edges.length);
+    const detours = findDetours(routes, routable, {
+      spacing: portSpacing,
+      clearance: shapeBufferDistance,
+      onTheWay,
+      maxDetours,
+    });
     if (detours.size === 0) return result;
     const detoured = finish(this.routeOnce(routable, detours));
     return isBetter(detoured, result, routable) ? detoured : result;

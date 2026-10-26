@@ -368,6 +368,11 @@ export interface DetourOptions {
    * against the edge's direction becomes a loop around its node.
    */
   onTheWay: boolean;
+  /**
+   * At most this many detours, the runs passing through over the longest distance first:
+   * every checkpoint makes the second libavoid run slower.
+   */
+  maxDetours: number;
 }
 
 /**
@@ -386,40 +391,44 @@ export function findDetours(
 ): Map<string, Point> {
   const runs = runsOf(copyRoutes(routes), model);
   const index = new RunIndex(runs);
-  const detours = new Map<string, Point>();
-  const sentToStreet = new Map<string, number>();
+
+  // the runs that do not fit into their street, with the room it has
+  const evicted: Array<{ run: Run; room: number }> = [];
   for (const bundle of overlappingBundles(runs, index)) {
     const movable = bundle.filter((run) => run.movable);
     if (movable.length === 0) continue;
     const intervals = movable.map((run) => freeInterval(run, model.nodes));
     const room = Math.min(...intervals.map(([, high]) => high)) - Math.max(...intervals.map(([low]) => low));
     if (!Number.isFinite(room)) continue;
-
     let used = 0;
-    const byLength = [...movable].sort((a, b) => runLength(a) - runLength(b));
-    for (const run of byLength) {
+    for (const run of [...movable].sort((a, b) => runLength(a) - runLength(b))) {
       const needed = run.width + options.spacing;
-      if (used + needed <= room) {
-        used += needed;
-        continue;
-      }
-      if (detours.has(run.edgeId)) continue;
-      const street = nearestWideStreet(run, model.nodes, room, options);
-      if (!street) continue;
-      // detours into the same street are lined up from its side facing the crowded one
-      const key = `${run.axis}:${street.low}:${street.high}`;
-      const count = sentToStreet.get(key) ?? 0;
-      sentToStreet.set(key, count + 1);
-      const step = run.width + options.spacing;
-      const centre = (street.low + street.high) / 2;
-      const position =
-        street.low > positionOf(run)
-          ? Math.min(centre, street.low + (count + 1) * step)
-          : Math.max(centre, street.high - (count + 1) * step);
-      const [from, to] = extentOf(run);
-      const middle = (from + to) / 2;
-      detours.set(run.edgeId, run.axis === 'x' ? { x: position, y: middle } : { x: middle, y: position });
+      if (used + needed <= room) used += needed;
+      else evicted.push({ run, room });
     }
+  }
+
+  const detours = new Map<string, Point>();
+  const sentToStreet = new Map<string, number>();
+  evicted.sort((a, b) => runLength(b.run) - runLength(a.run));
+  for (const { run, room } of evicted) {
+    if (detours.size >= options.maxDetours) break;
+    if (detours.has(run.edgeId)) continue;
+    const street = nearestWideStreet(run, model.nodes, room, options);
+    if (!street) continue;
+    // detours into the same street are lined up from its side facing the crowded one
+    const key = `${run.axis}:${street.low}:${street.high}`;
+    const count = sentToStreet.get(key) ?? 0;
+    sentToStreet.set(key, count + 1);
+    const step = run.width + options.spacing;
+    const centre = (street.low + street.high) / 2;
+    const position =
+      street.low > positionOf(run)
+        ? Math.min(centre, street.low + (count + 1) * step)
+        : Math.max(centre, street.high - (count + 1) * step);
+    const [from, to] = extentOf(run);
+    const middle = (from + to) / 2;
+    detours.set(run.edgeId, run.axis === 'x' ? { x: position, y: middle } : { x: middle, y: position });
   }
   return detours;
 }
