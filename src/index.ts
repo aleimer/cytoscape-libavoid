@@ -27,6 +27,7 @@ export type {
 
 const SCRATCH_KEY = '_libavoid';
 const ROUTED_EVENT = 'avoidrouted';
+const ERROR_EVENT = 'avoiderror';
 
 export interface LibavoidOptions extends RoutingOptions {
   /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
@@ -47,6 +48,13 @@ export interface LibavoidOptions extends RoutingOptions {
   live: boolean;
   /** With `live`: re-route continuously while a node is dragged; false = only on release. @default true */
   rerouteOnDrag: boolean;
+  /**
+   * With `rerouteOnDrag`: minimum pause between re-routes while a node is dragged (ms).
+   * `'auto'` = as long as the last run took, so routing uses at most about half of the
+   * time and dragging stays smooth on large graphs. 0 = re-route on every frame.
+   * @default 'auto'
+   */
+  dragRouteInterval: number | 'auto';
 }
 
 /** Payload of the `avoidrouted` event. */
@@ -65,6 +73,7 @@ export const defaults: Readonly<LibavoidOptions> = Object.freeze({
   cornerRadius: 0,
   live: true,
   rerouteOnDrag: true,
+  dragRouteInterval: 'auto',
 });
 
 const nextFrame: (callback: () => void) => void =
@@ -86,6 +95,8 @@ export class LibavoidRouting {
   private routePending = false;
   /** The model of the last run, serialised, to skip re-routes when nothing moved. */
   private lastModelKey = '';
+  /** End time and duration of the last run, for the pause between re-routes while dragging. */
+  private lastRun = { end: 0, duration: 0 };
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
   constructor(cy: Core, options: Partial<LibavoidOptions> = {}) {
@@ -152,19 +163,16 @@ export class LibavoidRouting {
    * Coalesces many change events into one re-route per animation frame, and
    * skips it when the routing input did not change: style / data events also
    * fire for changes that do not move anything, e.g. live data, or (with
-   * compound nodes) for every node whenever edge styles are set.
+   * compound nodes) for every node whenever edge styles are set. While a node
+   * is dragged, re-routes are spaced out by `dragRouteInterval`.
    */
   scheduleRoute(): void {
     if (this.routePending || this.destroyed || !this.avoid) return;
     this.routePending = true;
-    nextFrame(() => {
-      this.routePending = false;
-      if (this.destroyed || !this.avoid) return;
-      // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
-      if (!this.options.rerouteOnDrag && this.cy.nodes(':grabbed').nonempty()) return;
-      const model = this.model();
-      if (JSON.stringify(model) !== this.lastModelKey) this.routeModel(this.avoid, model);
-    });
+    const runInNextFrame = () => nextFrame(() => this.runScheduledRoute());
+    const pause = this.isDragging() ? this.dragPause() : 0;
+    if (pause > 0) setTimeout(runInNextFrame, pause);
+    else runInNextFrame();
   }
 
   /** Changes options and re-routes. */
@@ -188,18 +196,48 @@ export class LibavoidRouting {
     if (this.cy.scratch(SCRATCH_KEY) === this) this.cy.removeScratch(SCRATCH_KEY);
   }
 
-  private routeModel(avoid: Avoid, model: GraphModel): ReadonlyMap<string, Point[]> {
+  private routeModel(avoid: Avoid, model: GraphModel, modelKey = JSON.stringify(model)): ReadonlyMap<string, Point[]> {
     const start = performance.now();
     const routes = new EdgeRouter(avoid, this.options).route(model);
-    this.lastModelKey = JSON.stringify(model);
+    this.lastModelKey = modelKey;
     const routed = performance.now();
 
     this.styler.apply(routes, this.options.cornerRadius);
     this.currentRoutes = routes;
 
-    const info: RoutedEventInfo = { edges: routes.size, routingMs: routed - start, totalMs: performance.now() - start };
+    const end = performance.now();
+    this.lastRun = { end, duration: end - start };
+    const info: RoutedEventInfo = { edges: routes.size, routingMs: routed - start, totalMs: end - start };
     this.cy.emit(ROUTED_EVENT, [info]);
     return routes;
+  }
+
+  private runScheduledRoute(): void {
+    this.routePending = false;
+    if (this.destroyed || !this.avoid) return;
+    // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
+    if (!this.options.rerouteOnDrag && this.isDragging()) return;
+    const model = this.model();
+    const modelKey = JSON.stringify(model);
+    if (modelKey === this.lastModelKey) return;
+    try {
+      this.routeModel(this.avoid, model, modelKey);
+    } catch (error) {
+      this.lastModelKey = modelKey; // do not retry the same input on every following event
+      this.cy.emit(ERROR_EVENT, [error]);
+      console.error('cytoscape-libavoid: re-route failed', error);
+    }
+  }
+
+  private isDragging(): boolean {
+    return this.cy.nodes(':grabbed').nonempty();
+  }
+
+  /** How long to wait before the next re-route while dragging, see `dragRouteInterval`. */
+  private dragPause(): number {
+    const { dragRouteInterval } = this.options;
+    const interval = dragRouteInterval === 'auto' ? this.lastRun.duration : dragRouteInterval;
+    return this.lastRun.end + interval - performance.now();
   }
 
   private startListening(): void {

@@ -1,32 +1,41 @@
-// Routing core only (no Cytoscape): node --import ./scripts/ts-resolve.ts bench/perf.ts '[{"ports":"auto"},{"ports":"docking"}]'
+// Routing time of the EdgeRouter alone (no Cytoscape, no rendering), on the
+// same material-flow graphs the Angular bench uses.
+//
+//   npm run perf                                  # size M, auto and docking ports
+//   npm run perf -- L                             # size S / M / L
+//   npm run perf -- M '[{"ports":"docking","shapeBufferDistance":4}]'
 import { loadLibavoid } from '../src/libavoid';
 import { EdgeRouter } from '../src/routing';
-import type { GraphEdge, GraphNode, RoutingOptions } from '../src/routing';
-const Avoid = await loadLibavoid();
-const nodes: GraphNode[] = [],
-  edges: GraphEdge[] = [];
-for (let col = 0; col < 8; col++)
-  for (let row = 0; row < 8; row++)
-    nodes.push({ id: `n${col}_${row}`, x: col * 220, y: row * 120, width: 60, height: 50 });
-let k = 0;
-for (let col = 0; col < 7; col++)
-  for (let row = 0; row < 8; row++) {
-    edges.push({
-      id: `e${k++}`,
-      source: `n${col}_${row}`,
-      target: `n${col + 1}_${(row * 3 + 1) % 8}`,
-      width: 2 + (k % 10),
-    });
-    edges.push({
-      id: `e${k++}`,
-      source: `n${col}_${row}`,
-      target: `n${Math.min(7, col + 2)}_${(row + 5) % 8}`,
-      width: 2 + (k % 7),
-    });
+import type { GraphModel, RoutingOptions } from '../src/routing';
+import { buildGraph, NODE_H, NODE_W, SIZES } from './angular/src/app/graph';
+
+const RUNS = 5;
+const [sizeName = 'M', variantsJson = '[{"ports":"auto"},{"ports":"docking"}]'] = process.argv.slice(2);
+const size = SIZES[sizeName];
+if (!size) throw new Error(`unknown size "${sizeName}", use one of ${Object.keys(SIZES).join(', ')}`);
+const variants: Array<Partial<RoutingOptions>> = JSON.parse(variantsJson);
+
+/** The process nodes and flows of the bench graph; groups are not obstacles. */
+function benchModel(): GraphModel {
+  const model: GraphModel = { nodes: [], edges: [] };
+  for (const element of buildGraph(size)) {
+    const data = element.data as { id: string; source?: string; target?: string; flow?: number };
+    if (element.group === 'nodes' && element.position) {
+      model.nodes.push({ id: data.id, ...element.position, width: NODE_W, height: NODE_H });
+    } else if (element.group === 'edges' && data.source && data.target) {
+      model.edges.push({ id: data.id, source: data.source, target: data.target, width: data.flow });
+    }
   }
-const variants: Partial<RoutingOptions>[] = JSON.parse(process.argv[2] || '[{}]');
-for (const v of variants) {
-  const t = performance.now();
-  new EdgeRouter(Avoid, v).route({ nodes, edges });
-  console.log(JSON.stringify(v), (performance.now() - t).toFixed(0), 'ms');
+  return model;
+}
+
+const avoid = await loadLibavoid();
+const model = benchModel();
+console.log(`size ${sizeName}: ${model.nodes.length} nodes, ${model.edges.length} edges, mean of ${RUNS} runs`);
+for (const variant of variants) {
+  const router = new EdgeRouter(avoid, variant);
+  router.route(model); // warm-up
+  const start = performance.now();
+  for (let i = 0; i < RUNS; i++) router.route(model);
+  console.log(`  ${JSON.stringify(variant).padEnd(40)} ${((performance.now() - start) / RUNS).toFixed(1)} ms`);
 }
