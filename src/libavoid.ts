@@ -109,7 +109,7 @@ export interface Avoid {
 }
 
 interface AvoidLibLoader {
-  load(wasmUrl?: string): Promise<void>;
+  load(wasmUrl?: string | undefined): Promise<void>;
   getInstance(): Avoid;
 }
 
@@ -118,7 +118,7 @@ interface AvoidLibLoader {
 let loading: Promise<Avoid> | null = null;
 
 /** Loads the libavoid WebAssembly module once and caches the instance. */
-export function loadLibavoid(wasmUrl?: string): Promise<Avoid> {
+export function loadLibavoid(wasmUrl?: string | undefined): Promise<Avoid> {
   if (!loading) {
     loading = AvoidLib.load(wasmUrl)
       .then(() => AvoidLib.getInstance())

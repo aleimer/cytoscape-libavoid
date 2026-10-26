@@ -178,7 +178,7 @@ libavoid API that `EdgeRouter` builds on. `computeDockingPorts`,
 
 ```sh
 npm install
-npm run typecheck   # tsc over the plugin, tests, scripts and demo (app-style settings)
+npm run typecheck   # tsc over everything, plus src/ with every strictness flag (tsconfig.strict.json)
 npm test            # node:test, incl. a headless Cytoscape integration test
 npm run perf        # routing core benchmark
 npm run demo        # bundle demo/main.ts and serve it at http://localhost:8080/demo/

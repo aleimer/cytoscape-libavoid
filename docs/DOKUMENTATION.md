@@ -105,7 +105,10 @@ den Ihr Projekt selbst mitkompiliert (Angular, Vite, webpack, esbuild …).
 
 3. In der `tsconfig.json` Ihres Projekts muss `skipLibCheck: true` gesetzt sein
    (Standard bei Angular und Vite), weil libavoid-js fehlerhafte `.d.ts`-Dateien
-   mitliefert. `moduleResolution` muss `"bundler"` oder `"node"` sein.
+   mitliefert. `moduleResolution` muss `"bundler"` oder `"node"` sein. Die
+   Quellen kompilieren auch mit allen Strenge-Optionen (u. a.
+   `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`) und brauchen
+   keine Bibliothek neuer als ES2020; geprüft mit `tsconfig.strict.json`.
 4. Registrieren und verwenden:
 
    ```ts

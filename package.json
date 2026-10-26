@@ -5,7 +5,7 @@
   "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly), incl. docking ports that give every edge its own place on the node side",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p tsconfig.strict.json",
     "test": "node --import ./scripts/ts-resolve.ts --test \"test/**/*.test.ts\"",
     "perf": "node --import ./scripts/ts-resolve.ts bench/perf.ts",
     "build:demo": "node scripts/build-demo.ts",

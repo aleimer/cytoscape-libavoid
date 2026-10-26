@@ -32,11 +32,11 @@ export interface GraphEdge {
   source: string;
   target: string;
   /** Stroke width, used to space docking ports and parallel segments. */
-  width?: number;
+  width?: number | undefined;
   /** Docking ports: side the edge leaves its source, instead of the one given by `flowDirection`. */
-  sourceSide?: Side;
+  sourceSide?: Side | undefined;
   /** Docking ports: side the edge enters its target, instead of the one given by `flowDirection`. */
-  targetSide?: Side;
+  targetSide?: Side | undefined;
 }
 
 export interface GraphModel {
@@ -306,7 +306,7 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
       const sideLength = vertical ? node.height : node.width;
       const widths = slots.map((slot) => slot.edge.width || 0);
       const offsets = spreadPorts(widths, sideLength, portSpacing);
-      slots.forEach((slot, i) => (slot.port.offset = offsets[i]));
+      slots.forEach((slot, i) => (slot.port.offset = offsets[i] ?? 0.5));
     }
   }
   return ports;
@@ -379,7 +379,7 @@ function continuesStraight(a: Point, b: Point, c: Point): boolean {
 export interface RouteRequest {
   id: number;
   /** Absolute URL of libavoid.wasm; only the first request loads it. */
-  wasmUrl?: string;
+  wasmUrl?: string | undefined;
   model: GraphModel;
   options: RoutingOptions;
 }

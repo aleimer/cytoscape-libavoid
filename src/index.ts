@@ -44,14 +44,14 @@ const ERROR_EVENT = 'avoiderror';
 
 export interface LibavoidOptions extends RoutingOptions {
   /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
-  wasmUrl?: string;
+  wasmUrl?: string | undefined;
   /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. Not used with `worker`. */
-  avoidLib?: Avoid;
+  avoidLib?: Avoid | undefined;
   /**
    * Route in this Web Worker (running routing.worker.ts) instead of the main thread,
    * so large graphs do not block rendering. `route()` is then not available; use `refresh()`.
    */
-  worker?: RoutingWorker;
+  worker?: RoutingWorker | undefined;
   /** Selector of the edges to route. @default 'edge' */
   edges: string;
   /** Selector of the nodes that act as obstacles and edge endpoints. @default 'node:childless' */

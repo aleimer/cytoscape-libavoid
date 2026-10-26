@@ -1,0 +1,28 @@
+{
+  // Type-checks only the plugin (src/) the way a strict consumer project might
+  // compile it: every strictness flag on, ES2020 library only. Part of
+  // `npm run typecheck`, so src/ keeps compiling in such projects.
+  "compilerOptions": {
+    "target": "es2020",
+    "lib": ["es2020", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    // libavoid-js ships broken .d.ts files
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "files": ["src/index.ts", "src/routing.worker.ts"]
+}

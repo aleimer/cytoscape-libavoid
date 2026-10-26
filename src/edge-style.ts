@@ -50,9 +50,9 @@ export function routeToEdgeStyle(
   targetCentre: Point,
   cornerRadius = 0,
 ): EdgeSegmentStyle | null {
-  if (!points || points.length < 2) return null;
-  const start = points[0];
-  const end = points[points.length - 1];
+  const start = points?.[0];
+  const end = points?.[points.length - 1];
+  if (!points || !start || !end || points.length < 2) return null;
   const along = { x: end.x - start.x, y: end.y - start.y };
   const lengthSquared = along.x * along.x + along.y * along.y;
   if (lengthSquared < MIN_LENGTH_SQUARED) return null;
@@ -91,18 +91,18 @@ export function edgeStyleToPoints(
   targetCentre: Point,
 ): Point[] {
   const numbers = (value: string): number[] => value.split(/\s+/).map(parseFloat);
-  const [startX, startY] = numbers(style['source-endpoint']);
-  const [endX, endY] = numbers(style['target-endpoint']);
+  const [startX = 0, startY = 0] = numbers(style['source-endpoint']);
+  const [endX = 0, endY = 0] = numbers(style['target-endpoint']);
   const start = { x: sourceCentre.x + startX, y: sourceCentre.y + startY };
   const end = { x: targetCentre.x + endX, y: targetCentre.y + endY };
   const along = { x: end.x - start.x, y: end.y - start.y };
   const length = Math.hypot(along.x, along.y);
   const normal = { x: -along.y / length, y: along.x / length };
   const distances = numbers(style['segment-distances']);
-  const inner = numbers(style['segment-weights']).map((weight, i) => ({
-    x: start.x + weight * along.x + distances[i] * normal.x,
-    y: start.y + weight * along.y + distances[i] * normal.y,
-  }));
+  const inner = numbers(style['segment-weights']).map((weight, i) => {
+    const distance = distances[i] ?? 0;
+    return { x: start.x + weight * along.x + distance * normal.x, y: start.y + weight * along.y + distance * normal.y };
+  });
   return [start, ...inner, end];
 }
 
