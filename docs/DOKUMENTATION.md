@@ -507,7 +507,9 @@ schnell, dass das auch beim Ziehen flüssig bleibt (siehe
 Im Modus `docking` gilt für jede Knotenseite:
 
 1. Alle Kanten, die diese Seite nutzen, werden nach der Lage des Gegenknotens
-   quer zur Flussrichtung sortiert (bei `right`: nach dessen y-Koordinate).
+   entlang der Seite sortiert: an linken und rechten Seiten nach dessen
+   y-Koordinate, an oberen und unteren nach dessen x-Koordinate. Das gilt
+   auch für Seiten, die per `sourceSide` / `targetSide` erzwungen werden.
 2. Die Kanten werden in dieser Reihenfolge lückenlos gestapelt. Jede belegt
    ihre Breite, dazwischen liegt `portSpacing`. Der Stapel sitzt mittig auf der
    Seite.

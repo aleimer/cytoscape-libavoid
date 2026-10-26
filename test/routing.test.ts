@@ -203,3 +203,26 @@ test('rebuild performance for a mid-sized flow graph', () => {
     assert.ok(ms < 2000, `fast enough for live re-routing (${ms.toFixed(0)} ms)`);
   }
 });
+
+test('docking ports on a top / bottom side are ordered by x, whatever the flow direction', () => {
+  // flowDirection 'right', but all edges leave s at the bottom towards targets below, left to right
+  const model: GraphModel = {
+    nodes: [
+      { id: 's', x: 0, y: 0, width: 120, height: 40 },
+      { id: 'left', x: -200, y: 300, width: 40, height: 40 },
+      { id: 'middle', x: 0, y: 200, width: 40, height: 40 },
+      { id: 'right', x: 200, y: 100, width: 40, height: 40 },
+    ],
+    edges: ['right', 'left', 'middle'].map((target) => ({
+      id: target,
+      source: 's',
+      target,
+      width: 6,
+      sourceSide: 'bottom' as const,
+      targetSide: 'top' as const,
+    })),
+  };
+  const ports = computeDockingPorts(model, { flowDirection: 'right' });
+  const offsets = ['left', 'middle', 'right'].map((id) => ports.get(id)?.source.offset ?? NaN);
+  assert.ok(offsets[0] < offsets[1] && offsets[1] < offsets[2], `ordered left to right: ${offsets}`);
+});

@@ -255,9 +255,8 @@ function readRoutes(router: LibavoidRouter, connectors: Map<string, ConnRef>): M
 interface PortSlot {
   port: DockingPort;
   edge: GraphEdge;
-  /** Id and cross-flow position of the node at the other end of the edge; slots are sorted by them. */
-  otherNodeId: string;
-  otherNodePosition: number;
+  /** The node at the other end of the edge; the slots of a side are sorted by its position along the side. */
+  otherNode: GraphNode;
 }
 
 /**
@@ -274,7 +273,6 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
     options;
   const sides: { out: Side; in: Side } | undefined = FLOW_SIDES[flowDirection];
   if (!sides) throw new Error(`cytoscape-libavoid: unknown flowDirection "${flowDirection}"`);
-  const across = flowDirection === 'right' || flowDirection === 'left' ? 'y' : 'x';
 
   const nodes = new Map(model.nodes.map((node) => [node.id, node]));
   const slotsByNode = new Map<GraphNode, Partial<Record<Side, PortSlot[]>>>();
@@ -295,16 +293,17 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
       target: { side: edge.targetSide ?? sides.in, offset: 0.5 },
     };
     ports.set(edge.id, edgePorts);
-    addSlot(source, { port: edgePorts.source, edge, otherNodeId: target.id, otherNodePosition: target[across] });
-    addSlot(target, { port: edgePorts.target, edge, otherNodeId: source.id, otherNodePosition: source[across] });
+    addSlot(source, { port: edgePorts.source, edge, otherNode: target });
+    addSlot(target, { port: edgePorts.target, edge, otherNode: source });
   }
 
   for (const [node, bySide] of slotsByNode) {
     for (const side of SIDES) {
       const slots = bySide[side];
       if (!slots) continue;
-      slots.sort(compareSlots);
-      const sideLength = side === 'left' || side === 'right' ? node.height : node.width;
+      const vertical = side === 'left' || side === 'right';
+      slots.sort(vertical ? compareSlotsBy('y') : compareSlotsBy('x'));
+      const sideLength = vertical ? node.height : node.width;
       const widths = slots.map((slot) => slot.edge.width || 0);
       const offsets = spreadPorts(widths, sideLength, portSpacing);
       slots.forEach((slot, i) => (slot.port.offset = offsets[i]));
@@ -313,10 +312,13 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
   return ports;
 }
 
-const compareSlots = (a: PortSlot, b: PortSlot): number =>
-  a.otherNodePosition - b.otherNodePosition ||
-  a.otherNodeId.localeCompare(b.otherNodeId) ||
-  a.edge.id.localeCompare(b.edge.id);
+/** Orders the slots of a side by where their other node lies along it (x for top / bottom, y for left / right). */
+const compareSlotsBy =
+  (axis: 'x' | 'y') =>
+  (a: PortSlot, b: PortSlot): number =>
+    a.otherNode[axis] - b.otherNode[axis] ||
+    a.otherNode.id.localeCompare(b.otherNode.id) ||
+    a.edge.id.localeCompare(b.edge.id);
 
 /**
  * Stacks ports of the given widths along a side, centred and `spacing` apart,
