@@ -81,6 +81,7 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 | `edgeWidth` | `e => e.numericStyle('width')` | width used for stacking / nudging |
 | `live` | `true` | re-route automatically on graph changes |
 | `rerouteOnDrag` | `true` | when live: re-route while dragging (`false` = on release only) |
+| `dragRouteInterval` | `'auto'` | pause between re-routes while dragging (ms); `'auto'` = as long as the last run took, `0` = every frame |
 | `routingParameters` | `{}` | raw libavoid `RoutingParameter`s, e.g. `{ crossingPenalty: 200 }` |
 | `routingOptions` | `{}` | raw libavoid `RoutingOption`s |
 | `wasmUrl` / `avoidLib` | – | see above |
@@ -88,10 +89,26 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 Per edge, `data(sourceSide)` / `data(targetSide)` (`'top' | 'right' | 'bottom' | 'left'`)
 force the side an edge leaves or enters a node (docking ports).
 
-**Performance note:** libavoid's `performUnifyingNudgingPreprocessingStep` is
-switched off by default. It took ~98 % of the routing time (64 nodes / 112
-edges: 3.4 s → 50 ms, docking ports 16 s → 140 ms) for slightly fewer bends. Turn it
-back on with `routingOptions: { performUnifyingNudgingPreprocessingStep: true }`.
+## Performance
+
+Every run routes the whole graph. Routing time in Node.js (`npm run perf`, the
+material-flow graphs of the Angular bench):
+
+| Graph | `ports: 'auto'` | `ports: 'docking'` | `routingType: 'polyline'` |
+|---|--:|--:|--:|
+| 45 nodes, 53 edges | ~6 ms | ~5 ms | ~85 ms |
+| 128 nodes, 182 edges | ~49 ms | ~71 ms | ~2100 ms |
+| 300 nodes, 488 edges | ~470 ms | ~1030 ms | – |
+
+- While dragging, `dragRouteInterval: 'auto'` spaces re-routes out so routing
+  takes at most about half of the time. On the 128-node graph this lifts a drag
+  from 22 to 105 fps; edges follow ~5 times per second and the final position
+  is routed on release.
+- Prefer `orthogonal`: `polyline` is many times slower.
+- libavoid's `performUnifyingNudgingPreprocessingStep` is switched off by
+  default. It took ~98 % of the routing time (64 nodes / 112 edges: 3.4 s →
+  50 ms, docking ports 16 s → 140 ms) for slightly fewer bends. Turn it back on
+  with `routingOptions: { performUnifyingNudgingPreprocessingStep: true }`.
 
 ## API
 
@@ -105,6 +122,7 @@ routing.setOptions({ ports: 'auto' });// change options and re-route
 routing.destroy();                    // stop and restore the original edge styles
 
 cy.on('avoidrouted', (evt, { edges, routingMs, totalMs }) => { … });
+cy.on('avoiderror', (evt, error) => { … }); // an automatic re-route failed (also logged)
 ```
 
 The options are documented on the `LibavoidOptions` / `RoutingOptions` types,

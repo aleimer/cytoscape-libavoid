@@ -1,0 +1,6 @@
+# LF everywhere, also on Windows checkouts with core.autocrlf, so that
+# `npm run format:check` (Prettier expects LF) passes on every machine.
+* text=auto eol=lf
+*.wasm binary
+*.png binary
+*.ico binary

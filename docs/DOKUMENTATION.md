@@ -81,7 +81,8 @@ cytoscape-libavoid/
 ├── scripts/build-demo.ts            bündelt die Demo nach demo/build/
 ├── scripts/ts-resolve.ts            lässt Node.js die Importe ohne .ts-Endung auflösen (Tests, perf)
 ├── scripts/serve.ts                 Mini-Webserver für die Demo
-├── test/routing.test.ts             Tests (node:test)
+├── test/                            Tests (node:test): routing, edge-style, plugin + helpers.ts
+├── .github/workflows/               ci.yml (Typprüfung, Format, Tests), pages.yml (Demo)
 ├── tsconfig.json                    Typprüfung (npm run typecheck) mit üblichen App-Einstellungen
 ├── LICENSE                          MIT-Lizenz des Plugin-Codes
 ├── package.json
@@ -251,6 +252,7 @@ Mögliche `routingOptions` (libavoid):
 |---|---|---|---|
 | `live` | `boolean` | `true` | Bei Änderungen am Graphen automatisch neu routen. Bei `false` routen Sie selbst mit `routing.route()`. |
 | `rerouteOnDrag` | `boolean` | `true` | Nur bei `live`: auch während des Ziehens routen. Bei `false` erst beim Loslassen. |
+| `dragRouteInterval` | `number` (ms) `\| 'auto'` | `'auto'` | Nur bei `rerouteOnDrag`: Mindestpause zwischen zwei Läufen während des Ziehens. `auto` = so lange wie der letzte Lauf gedauert hat; das Routing belegt dann höchstens etwa die Hälfte der Zeit und das Ziehen bleibt flüssig. `0` = in jedem Frame routen. Beim Loslassen wird immer die Endposition geroutet. |
 
 ### Laden
 
@@ -439,6 +441,7 @@ libavoid-Router auf und gibt danach den gesamten WebAssembly-Speicher wieder fre
 | Event | Ziel | Extra-Parameter | Wann |
 |---|---|---|---|
 | `avoidrouted` | `cy` | `{ edges, routingMs, totalMs }` | nach jedem Routing-Lauf |
+| `avoiderror` | `cy` | `Error` | wenn ein automatischer Lauf (durch eine Änderung am Graphen ausgelöst) fehlschlägt |
 
 - `edges`: Anzahl gerouteter Kanten
 - `routingMs`: Zeit in libavoid
@@ -448,7 +451,13 @@ libavoid-Router auf und gibt danach den gesamten WebAssembly-Speicher wieder fre
 cy.on('avoidrouted', (evt, info) => {
   console.log(`${info.edges} Kanten in ${info.totalMs.toFixed(1)} ms`);
 });
+cy.on('avoiderror', (evt, error) => showWarning(error.message));
 ```
+
+Ein fehlgeschlagener automatischer Lauf wird zusätzlich mit `console.error`
+protokolliert; das Plugin läuft weiter und versucht es bei der nächsten
+Änderung erneut. Fehler bei `route()` und `setOptions()` werden dagegen direkt
+an den Aufrufer geworfen.
 
 Bei `live: true` hört das Plugin auf diese Cytoscape-Events:
 
@@ -461,7 +470,8 @@ Bei `live: true` hört das Plugin auf diese Cytoscape-Events:
 | `free` | Knoten | Ziehen beendet |
 
 Alle Events eines Frames werden zu einem Lauf zusammengefasst. Ein Layout mit
-vielen Positionsänderungen löst also nur wenige Läufe aus.
+vielen Positionsänderungen löst also nur wenige Läufe aus. Während ein Knoten
+gezogen wird, liegen die Läufe mindestens `dragRouteInterval` auseinander.
 
 ## 10. Wie das Plugin arbeitet
 
@@ -598,21 +608,34 @@ const pfade = [...routing.routes].map(([id, pts]) => `<path id="${id}" d="${d(pt
 
 ## 12. Performance
 
-Gemessen in Node.js 24 auf einem Graphen mit 64 Knoten und 112 Kanten, jeweils
-ein vollständiger Routing-Lauf:
+Ein Lauf routet immer den kompletten Graphen neu. Gemessen mit `npm run perf`
+(Node.js 25, nur `EdgeRouter`, ohne Cytoscape) auf den Materialfluss-Graphen
+des Angular-Benchmarks:
 
-| Modus | Zeit |
-|---|---|
-| `ports: 'auto'` | ~50–60 ms |
-| `ports: 'docking'` | ~80–140 ms |
-| `routingType: 'polyline'` | ~450–700 ms |
-| Demo (10 Knoten, 13 Kanten, Browser) | ~15 ms |
+| Graph | `ports: 'auto'` | `ports: 'docking'` | `routingType: 'polyline'` |
+|---|--:|--:|--:|
+| S: 45 Knoten, 53 Kanten | ~6 ms | ~5 ms | ~85 ms |
+| M: 128 Knoten, 182 Kanten | ~49 ms | ~71 ms | ~2100 ms |
+| L: 300 Knoten, 488 Kanten | ~470 ms | ~1030 ms | – |
+
+Im Browser liegen die Zeiten in derselben Größenordnung. Fast die gesamte Zeit
+verbringt libavoid selbst (Sichtbarkeitsgraph und Nudging). Ein über mehrere
+Läufe erhaltener Router bringt kaum etwas: Schon das Verschieben eines
+einzelnen Knotens kostet so viel wie ein kompletter Lauf, weil libavoid das
+Nudging für den ganzen Graphen neu rechnet.
+
+**Ziehen:** Mit `dragRouteInterval: 'auto'` (Standard) wartet das Plugin
+während des Ziehens nach jedem Lauf so lange, wie der Lauf gedauert hat. Im
+Angular-Benchmark (Graph M, Knoten 1,5 s lang ziehen) steigt die Bildrate
+dadurch von 22 auf 105 fps, die Skriptzeit sinkt von 7,2 s auf 1,3 s. Die
+Kanten folgen dann etwa fünfmal pro Sekunde, beim Loslassen wird die
+Endposition geroutet.
 
 Die libavoid-Option `performUnifyingNudgingPreprocessingStep` ist
-standardmäßig ausgeschaltet. Eingeschaltet steigt die Zeit für denselben
-Graphen auf 3,4 s (`auto`) bzw. 16 s (`docking`), dafür gibt es etwas weniger
-Knicke. Bei kleinen Graphen ohne Live-Ziehen können Sie sie wieder
-einschalten:
+standardmäßig ausgeschaltet. Eingeschaltet steigt die Zeit für einen Graphen
+mit 64 Knoten und 112 Kanten von ~50 ms auf 3,4 s (`auto`) bzw. von ~140 ms
+auf 16 s (`docking`), dafür gibt es etwas weniger Knicke. Bei kleinen Graphen
+ohne Live-Ziehen können Sie sie wieder einschalten:
 
 ```js
 cy.libavoid({ routingOptions: { performUnifyingNudgingPreprocessingStep: true } });
@@ -620,16 +643,19 @@ cy.libavoid({ routingOptions: { performUnifyingNudgingPreprocessingStep: true } 
 
 Weitere Hebel bei großen Graphen:
 
+- bei `orthogonal` bleiben: `polyline` ist um ein Vielfaches langsamer (siehe Tabelle)
+- `ports: 'auto'` ist bei großen Graphen etwa doppelt so schnell wie `docking`
 - `rerouteOnDrag: false`: nur beim Loslassen neu routen
-- bei `orthogonal` bleiben: `polyline` ist deutlich langsamer (siehe Tabelle)
 - über `edges` und `obstacles` nur den nötigen Teil des Graphen routen
+- `live: false` und `routing.route()` gezielt aufrufen, wenn sich viele Daten
+  ändern, die Geometrie aber selten
 
 ## 13. Fehlersuche
 
 | Problem | Ursache und Lösung |
 |---|---|
 | `ready` wird abgelehnt, 404 auf `libavoid.wasm` | Datei wird nicht ausgeliefert oder `wasmUrl` stimmt nicht. Den Pfad im Netzwerk-Tab der Browser-Entwicklertools prüfen. |
-| Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `node scripts/serve.ts`). |
+| Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `npm run demo`). |
 | `CompileError` oder CSP-Meldung zu WebAssembly | `'wasm-unsafe-eval'` in `script-src` der Content-Security-Policy ergänzen. |
 | `not ready yet, await routing.ready first` | `route()` wurde vor dem Laden aufgerufen. Erst `await routing.ready`. |
 | Alle Knoten liegen auf (0, 0), Kanten haben keine Route | Ohne `layout` setzt Cytoscape den `null`-Layout ein, der alle Knoten auf (0, 0) legt. `layout: { name: 'preset' }` oder ein echtes Layout angeben. |
@@ -637,7 +663,8 @@ Weitere Hebel bei großen Graphen:
 | Kanten laufen durch Beschriftungen | `includeLabels: true` |
 | Kanten liegen zu dicht am Knoten | `shapeBufferDistance` erhöhen |
 | Kanten an einer Knotenseite überlappen | Knotenseite zu kurz, die Bänder werden gestaucht. Knoten größer machen oder `edgeWidth` verkleinern. |
-| Unbekannter Parameter- oder Optionsname | Schreibweise mit den Listen in [Abschnitt 6](#6-optionen) vergleichen. |
+| Unbekannter Parameter- oder Optionsname | Schreibweise mit den Listen in [Abschnitt 6](#6-optionen) vergleichen. Bei automatischen Läufen kommt der Fehler über das Event `avoiderror` und die Konsole. |
+| Kanten hängen beim Ziehen hinterher | Gewollt bei großen Graphen, siehe `dragRouteInterval` in [Abschnitt 12](#12-performance). `dragRouteInterval: 0` routet in jedem Frame. |
 | Node-Prozess (Tests) beendet sich nicht | Am Ende `cy.destroy()` aufrufen. |
 
 ## 14. Demo
