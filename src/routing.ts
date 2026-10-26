@@ -399,3 +399,83 @@ export async function answerRouteRequest(request: RouteRequest): Promise<RouteRe
     return { id: request.id, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/** The part of a Web Worker used here; a `Worker` running routing.worker.ts fits. */
+export interface RoutingWorker {
+  postMessage(request: RouteRequest): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<RouteResponse>) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent<RouteResponse>) => void): void;
+}
+
+export interface WorkerRouteResult {
+  routes: Map<string, Point[]>;
+  /** Time spent in libavoid inside the worker. */
+  routingMs: number;
+}
+
+/** Request ids are unique across all WorkerRouters, so several of them can share one worker. */
+let lastRequestId = 0;
+
+/**
+ * Sends routing requests to a worker running routing.worker.ts: the
+ * asynchronous counterpart of EdgeRouter. Answers are matched by request id.
+ */
+export class WorkerRouter {
+  private readonly worker: RoutingWorker;
+  private readonly pending = new Map<number, PromiseWithCallbacks<WorkerRouteResult>>();
+
+  constructor(worker: RoutingWorker) {
+    this.worker = worker;
+    worker.addEventListener('message', this.onMessage);
+  }
+
+  /** True while a request is unanswered. */
+  get busy(): boolean {
+    return this.pending.size > 0;
+  }
+
+  /** Rejects with the worker's error message if routing fails there. */
+  route(request: Omit<RouteRequest, 'id'>): Promise<WorkerRouteResult> {
+    const id = ++lastRequestId;
+    const answer = promiseWithCallbacks<WorkerRouteResult>();
+    this.pending.set(id, answer);
+    this.worker.postMessage({ ...request, id });
+    return answer.promise;
+  }
+
+  /** Stops listening; unanswered requests are rejected. The worker itself keeps running. */
+  dispose(): void {
+    this.worker.removeEventListener('message', this.onMessage);
+    for (const answer of this.pending.values()) answer.reject(new Error('cytoscape-libavoid: worker router disposed'));
+    this.pending.clear();
+  }
+
+  private readonly onMessage = (event: MessageEvent<RouteResponse>): void => {
+    const response = event.data;
+    const answer = this.pending.get(response.id);
+    if (!answer) return; // a request of another WorkerRouter
+    this.pending.delete(response.id);
+    if ('error' in response) {
+      answer.reject(new Error(`cytoscape-libavoid: ${response.error.replace(/^cytoscape-libavoid: /, '')}`));
+    } else {
+      answer.resolve({ routes: new Map(response.routes), routingMs: response.routingMs });
+    }
+  };
+}
+
+interface PromiseWithCallbacks<T> {
+  promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: unknown): void;
+}
+
+// like Promise.withResolvers(), which needs ES2024
+function promiseWithCallbacks<T>(): PromiseWithCallbacks<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}

@@ -385,6 +385,7 @@ import cytoscapeLibavoid, {
 | `LibavoidRouting` | `index.ts` | Klasse hinter `cy.libavoid()`, siehe 8.3 |
 | `defaults` | `index.ts` | Standardoptionen (eingefroren) |
 | `EdgeRouter` | `routing.ts` | Routet ein Datenmodell ohne Cytoscape, siehe 8.5 |
+| `WorkerRouter` | `routing.ts` | Asynchrones Gegenstück zu `EdgeRouter`: schickt Anfragen an einen Worker mit `routing.worker.ts` (`route()`, `busy`, `dispose()`) |
 | `computeDockingPorts(model, options)` | `routing.ts` | Berechnet nur die Docking Ports, siehe 8.5 |
 | `spreadPorts(widths, sideLength, spacing)` | `routing.ts` | Verteilt Ports gegebener Breite auf einer Seite, liefert die Mitten als Anteil 0–1 |
 | `simplify(points)` | `routing.ts` | Rundet Koordinaten auf 3 Nachkommastellen und entfernt doppelte und kollineare Punkte |

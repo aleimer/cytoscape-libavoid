@@ -1,7 +1,8 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import cytoscape from 'cytoscape';
-import register from '../src';
+import register, { defaultRoutingOptions, WorkerRouter } from '../src';
+import type { GraphModel } from '../src';
 import { countRoutes, createCy, InProcessWorker, obstacleElements, wait } from './helpers';
 
 before(() => register(cytoscape));
@@ -159,4 +160,30 @@ test('setOptions during a worker request is routed afterwards', async () => {
   } finally {
     cy.destroy();
   }
+});
+
+test('WorkerRouters sharing one worker get their own answers; dispose() rejects pending requests', async () => {
+  const worker = new InProcessWorker();
+  const model = (x: number): GraphModel => ({
+    nodes: [
+      { id: 'a', x: 0, y: 0, width: 40, height: 40 },
+      { id: 'b', x, y: 0, width: 40, height: 40 },
+    ],
+    edges: [{ id: 'ab', source: 'a', target: 'b' }],
+  });
+  const first = new WorkerRouter(worker);
+  const second = new WorkerRouter(worker);
+  const [near, far] = await Promise.all([
+    first.route({ model: model(100), options: defaultRoutingOptions }),
+    second.route({ model: model(500), options: defaultRoutingOptions }),
+  ]);
+  assert.equal(near.routes.get('ab')?.at(-1)?.x, 80);
+  assert.equal(far.routes.get('ab')?.at(-1)?.x, 480);
+  assert.equal(first.busy || second.busy, false);
+
+  const pending = first.route({ model: model(100), options: defaultRoutingOptions });
+  assert.equal(first.busy, true);
+  first.dispose();
+  await assert.rejects(pending, /disposed/);
+  second.dispose();
 });
