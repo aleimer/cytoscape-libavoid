@@ -11,8 +11,14 @@ Changes and how to update from 0.1.0: [CHANGELOG.md](CHANGELOG.md)
 - orthogonal (taxi-style) or polyline routes that go around nodes
 - **docking ports**: every edge gets its own place on the outgoing / incoming
   node side, stacked by edge width and sorted to avoid crossings right at the node
-- parallel segments are nudged apart, optional rounded corners
-- live re-routing on add / remove / move / data changes, also while dragging
+- **no edges on top of each other**: where libavoid stacks edges in a narrow gap
+  between nodes, they are spread apart by their widths, and edges that do not
+  fit are sent through the nearest wider gap (see "Route quality")
+- `flowDirection: 'auto'` docks every edge on the sides its nodes face, so edges
+  against the main flow do not loop around their nodes
+- edge labels on the longest segment instead of a corner, optional rounded corners
+- live re-routing on add / remove / move / data changes, also while dragging,
+  optionally in a Web Worker
 
 Routes are applied as Cytoscape `segments` / `round-segments` style bypasses,
 so all usual edge styling (colour, arrows, opacity, …) keeps working.
@@ -26,8 +32,11 @@ toolchain:
 |---|---|---|
 | `index.ts` | `LibavoidRouting` | plugin wrapper: `cytoscape.use()` registration, `cy.libavoid()`, live re-routing |
 | `routing.ts` | `EdgeRouter` | routing logic incl. docking ports; works on a plain graph model, independent of Cytoscape |
+| `separation.ts` | – | spreads apart overlapping edges, finds detours for crowded gaps, measures route quality |
 | `libavoid.ts` | `LibavoidRouter` | libavoid connector: loads the WebAssembly module, wraps its API and memory handling |
 | `edge-style.ts` | `EdgeStyler` | converts routes to Cytoscape edge styles and applies / removes them |
+| `routing.worker.ts` | – | entry of the optional Web Worker |
+| `libavoid-js.d.ts` | – | stand-in typings for libavoid-js, whose own are broken |
 
 Copy that folder into your code base, then:
 
@@ -71,12 +80,15 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 |---|---|---|
 | `routingType` | `'orthogonal'` | `'orthogonal'` or `'polyline'` |
 | `ports` | `'auto'` | `'auto'`: one shared pin per side, libavoid chooses. `'docking'`: one docking port per edge end |
-| `flowDirection` | `'right'` | docking ports: `'right'`, `'left'`, `'down'`, `'up'` |
+| `flowDirection` | `'right'` | docking ports: `'right'`, `'left'`, `'down'`, `'up'`, or `'auto'` (per edge, the sides its nodes face) |
 | `portSpacing` | `2` | docking ports: gap between neighbouring ports (px) |
 | `shapeBufferDistance` | `12` | clearance kept around nodes (px) |
 | `idealNudgingDistance` | `'auto'` | distance between parallel segments; auto = max edge width + `portSpacing` |
 | `nudgeConnectedSegments` | `'auto'` | spread endpoints that share a pin; auto = on for `ports: 'auto'` |
+| `separateOverlaps` | `true` | spread apart edges that libavoid leaves on top of each other |
+| `detourCrowded` | `true` | route edges that do not fit into a narrow gap through a wider one (second libavoid run) |
 | `cornerRadius` | `0` | > 0 renders rounded corners |
+| `labelPosition` | `'middle'` | `'longest-segment'`: edge labels on the centre of the longest segment (replaces `text-margin-x/y`) |
 | `edges` | `'edge'` | selector of edges to route |
 | `obstacles` | `'node:childless'` | selector of nodes acting as obstacles |
 | `includeLabels` | `false` | node labels count as part of the obstacle |
@@ -92,26 +104,60 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 Per edge, `data(sourceSide)` / `data(targetSide)` (`'top' | 'right' | 'bottom' | 'left'`)
 force the side an edge leaves or enters a node (docking ports).
 
+## Route quality
+
+libavoid keeps a clearance (`shapeBufferDistance`) around nodes and does not
+nudge edges into it. Where many edges share a narrow gap between nodes, e.g.
+between the columns of a group, it puts them on the same line. Two steps after
+the libavoid run fix that (orthogonal routing):
+
+1. `detourCrowded`: gaps used by more edges than fit keep the short, local
+   edges; the ones passing through over the longest distance (at most 30 % of
+   all edges) are routed again through the nearest wide gap, via checkpoints.
+   The result is only kept if it clearly overlaps less without much more
+   length or crossings.
+2. `separateOverlaps`: the remaining overlapping segments are spread apart by
+   their widths plus `portSpacing`, inside the gap (using part of the
+   clearance if needed), never into a node and never moving the segments
+   attached to the ports.
+
+`npm run quality` measures overlaps, edges through nodes, crossings, bends and
+length on the bench graphs. On 128 nodes / 182 edges:
+
+| | overlapping strokes | crossings | length |
+|---|--:|--:|--:|
+| auto ports, libavoid only | 61,940 px | 1310 | 140,154 |
+| auto ports, now | **6,175 px** | 1348 | 146,516 |
+| docking ports, libavoid only | 63,892 px | 1047 | 136,353 |
+| docking ports, now | **20,111 px** | 1205 | 136,262 |
+
+No edge runs through a node in any of them.
+
 ## Performance
 
-Every run routes the whole graph. Routing time in Node.js (`npm run perf`, the
-material-flow graphs of the Angular bench):
+Every run routes the whole graph. Time per run in Node.js (`npm run perf`, the
+material-flow graphs of the Angular bench, docking ports; auto ports are
+similar):
 
-| Graph | `ports: 'auto'` | `ports: 'docking'` | `routingType: 'polyline'` |
+| Graph | libavoid only | default (incl. detours) | `routingType: 'polyline'` |
 |---|--:|--:|--:|
-| 45 nodes, 53 edges | ~6 ms | ~5 ms | ~85 ms |
-| 128 nodes, 182 edges | ~49 ms | ~71 ms | ~2100 ms |
-| 300 nodes, 488 edges | ~470 ms | ~1030 ms | – |
+| 45 nodes, 53 edges | ~5 ms | ~16 ms | ~85 ms |
+| 128 nodes, 182 edges | ~77 ms | ~200 ms | ~2100 ms |
+| 300 nodes, 488 edges | ~1040 ms | ~2900 ms | – |
 
+- Detours need a second libavoid run, so a full run takes about twice as long.
+  While a node is dragged, runs are drafts without detours; the release routes
+  once more in full. With `worker` all of it stays off the main thread, which
+  is the way to go for large graphs. `detourCrowded: false` skips it.
 - While dragging, `dragRouteInterval: 'auto'` spaces re-routes out so routing
-  takes at most about half of the time. On the 128-node graph this lifts a drag
-  from 22 to 105 fps; edges follow ~5 times per second and the final position
-  is routed on release.
-- Prefer `orthogonal`: `polyline` is many times slower.
+  takes at most about half of the time; edges follow ~5 times per second and
+  the final position is routed on release.
+- Prefer `orthogonal`: `polyline` is many times slower (and not post-processed).
 - libavoid's `performUnifyingNudgingPreprocessingStep` is switched off by
   default. It took ~98 % of the routing time (64 nodes / 112 edges: 3.4 s →
-  50 ms, docking ports 16 s → 140 ms) for slightly fewer bends. Turn it back on
-  with `routingOptions: { performUnifyingNudgingPreprocessingStep: true }`.
+  50 ms, docking ports 16 s → 140 ms) for slightly fewer bends and does not
+  help against the overlaps. Turn it back on with
+  `routingOptions: { performUnifyingNudgingPreprocessingStep: true }`.
 
 ## API
 
@@ -178,11 +224,13 @@ const router = new WorkerRouter(worker); // a Worker running routing.worker.ts
 const { routes, routingMs } = await router.route({ model, options: defaultRoutingOptions, wasmUrl });
 ```
 
-`EdgeStyler` writes routes onto Cytoscape edges (`apply(routes, cornerRadius,
-nodePositions?)`, `clear()`), and `LibavoidRouter` is the thin layer over the
-libavoid API that `EdgeRouter` builds on, including freeing its WebAssembly
-memory. `computeDockingPorts`, `spreadPorts`, `routeToEdgeStyle` and
-`simplify` are exported as plain functions.
+`EdgeStyler` writes routes onto Cytoscape edges (`apply(routes, { cornerRadius,
+labelPosition }, nodePositions?)`, `clear()`), and `LibavoidRouter` is the thin
+layer over the libavoid API that `EdgeRouter` builds on, including freeing its
+WebAssembly memory. `separateOverlaps`, `findDetours` and `routeQuality`
+(src/separation.ts) post-process and measure routes; `computeDockingPorts`,
+`spreadPorts`, `routeToEdgeStyle`, `labelOffset` and `simplify` are exported as
+plain functions.
 
 ## Development
 
@@ -191,6 +239,7 @@ npm install
 npm run typecheck   # tsc over everything, plus src/ with every strictness flag (tsconfig.strict.json)
 npm test            # node:test, incl. a headless Cytoscape integration test
 npm run perf        # routing core benchmark
+npm run quality     # overlaps, crossings, bends, length on the bench graphs
 npm run demo        # bundle demo/main.ts and serve it at http://localhost:8080/demo/
 ```
 
