@@ -781,11 +781,16 @@ Aufbau des Quellcodes (eine Klasse pro Datei):
 | `routing.worker.ts` | – | Einstieg des Web Workers: beantwortet `RouteRequest`s mit `answerRouteRequest()` aus `routing.ts`. |
 
 Wichtig beim Arbeiten mit libavoid-js: Jedes mit `new` erzeugte Objekt liegt im
-WebAssembly-Speicher und muss mit `.delete()` freigegeben werden. Das übernimmt
-`LibavoidRouter`: Hilfsobjekte merkt er sich und gibt sie in `dispose()` frei,
-Objekte, die dem libavoid-Router gehören (Shapes, Pins, Connectors), werden mit
-dem Router freigegeben. `EdgeRouter.route()` ruft `dispose()` im
-`finally`-Block auf.
+WebAssembly-Speicher und muss mit `.delete()` freigegeben werden. Dasselbe gilt
+für Objekte, die Methoden zurückgeben: libavoid-js nutzt embind, das Kopien
+herausgibt, z. B. `displayRoute()` (eine `PolyLine`) und `at(i)` (ein `Point`).
+
+All das übernimmt `LibavoidRouter`: Hilfsobjekte merkt er sich und gibt sie in
+`dispose()` frei, zurückgegebene Kopien gibt er sofort nach dem Auslesen frei,
+und Objekte, die dem libavoid-Router gehören (Shapes, Pins, Connectors), werden
+mit dem Router freigegeben. `EdgeRouter.route()` ruft `dispose()` im
+`finally`-Block auf. Der Test `test/memory.test.ts` prüft, dass alle
+zurückgegebenen Kopien freigegeben werden.
 
 Formatiert wird mit Prettier (`npm run format`, Prüfung: `npm run format:check`).
 
