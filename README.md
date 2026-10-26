@@ -169,10 +169,18 @@ const routes = router.route({
 routes.get('ab'); // [{ x, y }, …] from source to target
 ```
 
-`EdgeStyler` writes such routes onto Cytoscape edges (`apply(routes,
-cornerRadius)`, `clear()`), and `LibavoidRouter` is the thin layer over the
-libavoid API that `EdgeRouter` builds on. `computeDockingPorts`,
-`spreadPorts`, `routeToEdgeStyle` and `simplify` are exported as plain functions.
+`WorkerRouter` does the same in a Web Worker and returns a promise:
+
+```ts
+const router = new WorkerRouter(worker); // a Worker running routing.worker.ts
+const { routes, routingMs } = await router.route({ model, options: defaultRoutingOptions, wasmUrl });
+```
+
+`EdgeStyler` writes routes onto Cytoscape edges (`apply(routes, cornerRadius,
+nodePositions?)`, `clear()`), and `LibavoidRouter` is the thin layer over the
+libavoid API that `EdgeRouter` builds on, including freeing its WebAssembly
+memory. `computeDockingPorts`, `spreadPorts`, `routeToEdgeStyle` and
+`simplify` are exported as plain functions.
 
 ## Development
 
