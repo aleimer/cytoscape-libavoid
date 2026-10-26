@@ -748,6 +748,7 @@ Repo-Ordner gestartet wird.
 | Fluss | `flowDirection` |
 | Eckradius | `cornerRadius` 0–20 px |
 | beim Ziehen routen | `rerouteOnDrag` |
+| Worker | routet in einem Web Worker (`worker`, lädt die Seite mit `?worker=1` neu) |
 | + Hindernis | fügt einen Knoten an zufälliger Stelle ein, die Kanten weichen sofort aus |
 | Knoten ziehen | Live-Routing |
 
