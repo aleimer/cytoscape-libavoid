@@ -75,9 +75,11 @@ interface ShapeConnectionPin {
   setExclusive(exclusive: boolean): void;
 }
 
-interface PolyLine {
+/** A copy of a route (embind copies returned references), so it must be freed. */
+interface PolyLine extends Deletable {
   size(): number;
-  at(index: number): Point;
+  /** Also a copy that must be freed. */
+  at(index: number): AvoidPoint;
 }
 
 /** A routed connection between two shapes; owned and freed by its router. */
@@ -214,12 +216,17 @@ export class LibavoidRouter {
   /** The routed polyline of a connector, from its source to its target. */
   pointsOf(connector: ConnRef): Point[] {
     const route = connector.displayRoute();
-    const points: Point[] = [];
-    for (let i = 0; i < route.size(); i++) {
-      const { x, y } = route.at(i);
-      points.push({ x, y });
+    try {
+      const points: Point[] = [];
+      for (let i = 0; i < route.size(); i++) {
+        const point = route.at(i);
+        points.push({ x: point.x, y: point.y });
+        point.delete();
+      }
+      return points;
+    } finally {
+      route.delete();
     }
-    return points;
   }
 
   dispose(): void {
