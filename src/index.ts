@@ -1,20 +1,27 @@
 // Plugin wrapper: registers `cy.libavoid()` and keeps the routes of a Cytoscape
-// graph up to date. Routing is done by EdgeRouter (routing.ts), styling by
-// EdgeStyler (edge-style.ts).
+// graph up to date. Routing is done by EdgeRouter (routing.ts) in this thread
+// or in a Web Worker (routing.worker.ts), styling by EdgeStyler (edge-style.ts).
 
 import type cytoscapeFactory from 'cytoscape';
 import type { Core, EdgeSingular, EventHandler } from 'cytoscape';
 import { EdgeStyler } from './edge-style';
 import { loadLibavoid, SIDES } from './libavoid';
 import type { Avoid, Point, Side } from './libavoid';
-import { defaultRoutingOptions, EdgeRouter, resolveRoutingOptions } from './routing';
-import type { GraphModel, RoutingOptions } from './routing';
+import { defaultRoutingOptions, EdgeRouter, pickRoutingOptions, resolveRoutingOptions } from './routing';
+import type { GraphModel, RouteRequest, RouteResponse, RoutingOptions } from './routing';
 
 export { routeToEdgeStyle, edgeStyleToPoints, EdgeStyler } from './edge-style';
 export type { EdgeSegmentStyle } from './edge-style';
 export { loadLibavoid, LibavoidRouter } from './libavoid';
 export type { Avoid, PinSpec, Point, RoutingOptionName, RoutingParameterName, RoutingType, Side } from './libavoid';
-export { computeDockingPorts, defaultRoutingOptions, EdgeRouter, simplify, spreadPorts } from './routing';
+export {
+  answerRouteRequest,
+  computeDockingPorts,
+  defaultRoutingOptions,
+  EdgeRouter,
+  simplify,
+  spreadPorts,
+} from './routing';
 export type {
   DockingPort,
   EdgePorts,
@@ -22,6 +29,8 @@ export type {
   GraphEdge,
   GraphModel,
   GraphNode,
+  RouteRequest,
+  RouteResponse,
   RoutingOptions,
 } from './routing';
 
@@ -29,11 +38,23 @@ const SCRATCH_KEY = '_libavoid';
 const ROUTED_EVENT = 'avoidrouted';
 const ERROR_EVENT = 'avoiderror';
 
+/** The part of a Web Worker the plugin uses; a `Worker` running routing.worker.ts fits. */
+export interface RoutingWorker {
+  postMessage(request: RouteRequest): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<RouteResponse>) => void): void;
+  removeEventListener(type: 'message', listener: (event: MessageEvent<RouteResponse>) => void): void;
+}
+
 export interface LibavoidOptions extends RoutingOptions {
   /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
   wasmUrl?: string;
-  /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. */
+  /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. Not used with `worker`. */
   avoidLib?: Avoid;
+  /**
+   * Route in this Web Worker (running routing.worker.ts) instead of the main thread,
+   * so large graphs do not block rendering. `route()` is then not available; use `refresh()`.
+   */
+  worker?: RoutingWorker;
   /** Selector of the edges to route. @default 'edge' */
   edges: string;
   /** Selector of the nodes that act as obstacles and edge endpoints. @default 'node:childless' */
@@ -51,7 +72,8 @@ export interface LibavoidOptions extends RoutingOptions {
   /**
    * With `rerouteOnDrag`: minimum pause between re-routes while a node is dragged (ms).
    * `'auto'` = as long as the last run took, so routing uses at most about half of the
-   * time and dragging stays smooth on large graphs. 0 = re-route on every frame.
+   * time and dragging stays smooth on large graphs (with a `worker`: no pause, the
+   * next run starts when the worker is done). 0 = re-route on every frame.
    * @default 'auto'
    */
   dragRouteInterval: number | 'auto';
@@ -60,7 +82,9 @@ export interface LibavoidOptions extends RoutingOptions {
 /** Payload of the `avoidrouted` event. */
 export interface RoutedEventInfo {
   edges: number;
+  /** Time spent in libavoid. */
   routingMs: number;
+  /** From the start of the run to the styled edges; with a worker incl. the round trip. */
   totalMs: number;
 }
 
@@ -81,6 +105,9 @@ const nextFrame: (callback: () => void) => void =
     ? (callback) => requestAnimationFrame(callback)
     : (callback) => setTimeout(callback, 0);
 
+/** Request ids are unique across instances, so several instances can share one worker. */
+let lastRequestId = 0;
+
 /** Routes the edges of one Cytoscape instance; created by `cy.libavoid(options)`. */
 export class LibavoidRouting {
   readonly cy: Core;
@@ -89,8 +116,10 @@ export class LibavoidRouting {
   readonly ready: Promise<LibavoidRouting>;
 
   private avoid: Avoid | undefined;
+  private readonly worker: RoutingWorker | undefined;
   private readonly styler: EdgeStyler;
   private currentRoutes = new Map<string, Point[]>();
+  private started = false;
   private destroyed = false;
   private routePending = false;
   /** The model of the last run, serialised, to skip re-routes when nothing moved. */
@@ -99,21 +128,32 @@ export class LibavoidRouting {
   private lastRun = { end: 0, duration: 0 };
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
+  /** The worker request in flight; one at a time, changes in between are sent when it is answered. */
+  private workerRequest: { id: number; start: number; callers: Settle[] } | undefined;
+  /** Callers that asked for a result while a request was in flight; they get the next one. */
+  private callersForNextRequest: Settle[] = [];
+  /** The graph changed while a worker request was in flight. */
+  private changedDuringRequest = false;
+
   constructor(cy: Core, options: Partial<LibavoidOptions> = {}) {
     this.cy = cy;
     this.options = resolveRoutingOptions(defaults, options);
     this.styler = new EdgeStyler(cy);
+    this.worker = this.options.worker;
+    cy.one('destroy', this.onGraphDestroyed);
 
-    const libavoid = this.options.avoidLib
-      ? Promise.resolve(this.options.avoidLib)
-      : loadLibavoid(this.options.wasmUrl);
-    this.ready = libavoid.then((avoid) => {
-      if (this.destroyed) return this;
-      this.avoid = avoid;
-      if (this.options.live) this.startListening();
-      this.route();
-      return this;
-    });
+    if (this.worker) {
+      this.worker.addEventListener('message', this.onWorkerMessage);
+      this.ready = this.start().then(() => this);
+    } else {
+      const libavoid = this.options.avoidLib
+        ? Promise.resolve(this.options.avoidLib)
+        : loadLibavoid(this.options.wasmUrl);
+      this.ready = libavoid.then((avoid) => {
+        this.avoid = avoid;
+        return this.start().then(() => this);
+      });
+    }
   }
 
   /** Edge id -> route points of the last run. */
@@ -152,11 +192,27 @@ export class LibavoidRouting {
     };
   }
 
-  /** Routes all edges now. */
+  /** Routes all edges now, in this thread. Not available with a `worker`, see refresh(). */
   route(): ReadonlyMap<string, Point[]> {
     if (this.destroyed) return this.currentRoutes;
+    if (this.worker) throw new Error('cytoscape-libavoid: route() is not available with a worker, use refresh()');
     if (!this.avoid) throw new Error('cytoscape-libavoid: not ready yet, await routing.ready first');
-    return this.routeModel(this.avoid, this.model());
+    return this.routeHere(this.avoid, this.model());
+  }
+
+  /** Routes all edges now, in this thread or in the worker. */
+  refresh(): Promise<ReadonlyMap<string, Point[]>> {
+    if (this.destroyed) return Promise.resolve(this.currentRoutes);
+    if (!this.worker) {
+      try {
+        return Promise.resolve(this.route());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    return new Promise((resolve, reject) => {
+      this.requestFromWorker(this.model(), [{ resolve: () => resolve(this.currentRoutes), reject }]);
+    });
   }
 
   /**
@@ -167,7 +223,7 @@ export class LibavoidRouting {
    * is dragged, re-routes are spaced out by `dragRouteInterval`.
    */
   scheduleRoute(): void {
-    if (this.routePending || this.destroyed || !this.avoid) return;
+    if (this.routePending || this.destroyed || !this.started) return;
     this.routePending = true;
     const runInNextFrame = () => nextFrame(() => this.runScheduledRoute());
     const pause = this.isDragging() ? this.dragPause() : 0;
@@ -175,58 +231,147 @@ export class LibavoidRouting {
     else runInNextFrame();
   }
 
-  /** Changes options and re-routes. */
+  /** Changes options and re-routes. With a worker, errors arrive as `avoiderror` events. */
   setOptions(options: Partial<LibavoidOptions>): this {
     const wasLive = this.options.live;
     Object.assign(this.options, options);
-    if (!this.avoid) return this; // the first run picks the options up
+    if (!this.started) return this; // the first run picks the options up
     if (this.options.live && !wasLive) this.startListening();
     if (!this.options.live && wasLive) this.stopListening();
-    this.route();
+    if (this.worker) this.requestFromWorker(this.model());
+    else this.route();
     return this;
   }
 
-  /** Stops routing and restores the edges' own styles. */
+  /** Stops routing and restores the edges' own styles. A `worker` is left running. */
   destroy(): void {
+    this.stop(true);
+  }
+
+  private stop(restoreStyles: boolean): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.cy.removeListener('destroy', this.onGraphDestroyed);
     this.stopListening();
-    this.styler.clear();
+    this.worker?.removeEventListener('message', this.onWorkerMessage);
+    for (const caller of [...(this.workerRequest?.callers ?? []), ...this.callersForNextRequest]) caller.resolve();
+    this.workerRequest = undefined;
+    this.callersForNextRequest = [];
     this.currentRoutes.clear();
+    if (!restoreStyles) return;
+    this.styler.clear();
     if (this.cy.scratch(SCRATCH_KEY) === this) this.cy.removeScratch(SCRATCH_KEY);
   }
 
-  private routeModel(avoid: Avoid, model: GraphModel, modelKey = JSON.stringify(model)): ReadonlyMap<string, Point[]> {
-    const start = performance.now();
-    const routes = new EdgeRouter(avoid, this.options).route(model);
-    this.lastModelKey = modelKey;
-    const routed = performance.now();
+  /** `cy.destroy()` also ends the routing, so no pending re-route touches the destroyed graph. */
+  private readonly onGraphDestroyed = (): void => this.stop(false); // the renderer is already gone
 
-    this.styler.apply(routes, this.options.cornerRadius);
-    this.currentRoutes = routes;
-
-    const end = performance.now();
-    this.lastRun = { end, duration: end - start };
-    const info: RoutedEventInfo = { edges: routes.size, routingMs: routed - start, totalMs: end - start };
-    this.cy.emit(ROUTED_EVENT, [info]);
-    return routes;
+  /** First run, then listening for changes. */
+  private async start(): Promise<void> {
+    if (this.destroyed) return;
+    if (this.worker) {
+      await new Promise<void>((resolve, reject) => this.requestFromWorker(this.model(), [{ resolve, reject }]));
+    } else if (this.avoid) {
+      this.routeHere(this.avoid, this.model());
+    }
+    if (this.destroyed) return;
+    this.started = true;
+    if (this.options.live) {
+      this.startListening();
+      if (this.worker) this.scheduleRoute(); // picks up changes made while the first run was in the worker
+    }
   }
 
   private runScheduledRoute(): void {
     this.routePending = false;
-    if (this.destroyed || !this.avoid) return;
+    if (this.destroyed) return;
     // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
     if (!this.options.rerouteOnDrag && this.isDragging()) return;
     const model = this.model();
     const modelKey = JSON.stringify(model);
     if (modelKey === this.lastModelKey) return;
+    if (this.worker) {
+      this.requestFromWorker(model, [], modelKey);
+      return;
+    }
+    if (!this.avoid) return;
     try {
-      this.routeModel(this.avoid, model, modelKey);
+      this.routeHere(this.avoid, model, modelKey);
     } catch (error) {
       this.lastModelKey = modelKey; // do not retry the same input on every following event
-      this.cy.emit(ERROR_EVENT, [error]);
-      console.error('cytoscape-libavoid: re-route failed', error);
+      this.reportError(error);
     }
+  }
+
+  private routeHere(avoid: Avoid, model: GraphModel, modelKey = JSON.stringify(model)): ReadonlyMap<string, Point[]> {
+    const start = performance.now();
+    const routes = new EdgeRouter(avoid, this.options).route(model);
+    this.lastModelKey = modelKey;
+    this.applyRoutes(routes, performance.now() - start, start);
+    return routes;
+  }
+
+  /** Sends the model to the worker, or remembers to do so once the request in flight is answered. */
+  private requestFromWorker(model: GraphModel, callers: Settle[] = [], modelKey = JSON.stringify(model)): void {
+    if (!this.worker || this.destroyed) {
+      for (const caller of callers) caller.resolve();
+      return;
+    }
+    if (this.workerRequest) {
+      this.changedDuringRequest = true;
+      this.callersForNextRequest.push(...callers);
+      return;
+    }
+    this.lastModelKey = modelKey;
+    const request: RouteRequest = {
+      id: ++lastRequestId,
+      wasmUrl: absoluteUrl(this.options.wasmUrl),
+      model,
+      options: pickRoutingOptions(this.options),
+    };
+    this.workerRequest = { id: request.id, start: performance.now(), callers };
+    this.worker.postMessage(request);
+  }
+
+  private readonly onWorkerMessage = (event: MessageEvent<RouteResponse>): void => {
+    const response = event.data;
+    const request = this.workerRequest;
+    if (!request || response.id !== request.id) return; // another instance's request
+    this.workerRequest = undefined;
+
+    if ('error' in response) {
+      const error = new Error(`cytoscape-libavoid: ${response.error.replace(/^cytoscape-libavoid: /, '')}`);
+      if (request.callers.length) for (const caller of request.callers) caller.reject(error);
+      else this.reportError(error);
+    } else {
+      this.applyRoutes(new Map(response.routes), response.routingMs, request.start);
+      for (const caller of request.callers) caller.resolve();
+    }
+
+    const changed = this.changedDuringRequest;
+    this.changedDuringRequest = false;
+    const waiting = this.callersForNextRequest;
+    this.callersForNextRequest = [];
+    if (waiting.length) {
+      // they asked after this request was sent, so they get a fresh one even if nothing moved
+      this.requestFromWorker(this.model(), waiting);
+    } else if (changed) {
+      this.scheduleRoute();
+    }
+  };
+
+  private applyRoutes(routes: Map<string, Point[]>, routingMs: number, start: number): void {
+    this.styler.apply(routes, this.options.cornerRadius);
+    this.currentRoutes = routes;
+    const end = performance.now();
+    this.lastRun = { end, duration: end - start };
+    const info: RoutedEventInfo = { edges: routes.size, routingMs, totalMs: end - start };
+    this.cy.emit(ROUTED_EVENT, [info]);
+  }
+
+  private reportError(error: unknown): void {
+    this.cy.emit(ERROR_EVENT, [error]);
+    console.error('cytoscape-libavoid: re-route failed', error);
   }
 
   private isDragging(): boolean {
@@ -236,6 +381,7 @@ export class LibavoidRouting {
   /** How long to wait before the next re-route while dragging, see `dragRouteInterval`. */
   private dragPause(): number {
     const { dragRouteInterval } = this.options;
+    if (dragRouteInterval === 'auto' && this.worker) return 0; // the main thread is not blocked
     const interval = dragRouteInterval === 'auto' ? this.lastRun.duration : dragRouteInterval;
     return this.lastRun.end + interval - performance.now();
   }
@@ -259,6 +405,18 @@ export class LibavoidRouting {
     this.cy.on(events, selector, handler);
     this.listeners.push([events, selector, handler]);
   }
+}
+
+/** Callbacks of a caller waiting for a worker result. */
+interface Settle {
+  resolve(): void;
+  reject(error: unknown): void;
+}
+
+/** A worker resolves relative URLs against its own script, so they are made absolute first. */
+function absoluteUrl(url: string | undefined): string | undefined {
+  if (url === undefined || typeof document === 'undefined') return url;
+  return new URL(url, document.baseURI).href;
 }
 
 const parseSide = (value: unknown): Side | undefined => SIDES.find((side) => side === value);

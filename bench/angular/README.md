@@ -44,7 +44,7 @@ scenarios; results appear below the graph.
 
 | | |
 |---|---|
-| Config | graph size `S`/`M`/`L`; zone mode; enabled plugins; libavoid `ports`, `rerouteOnDrag` and `dragRouteInterval` |
+| Config | graph size `S`/`M`/`L`; zone mode; enabled plugins; libavoid `ports`, `rerouteOnDrag`, `dragRouteInterval` and `worker` |
 | Zone modes | `zone`: zone.js, cytoscape created inside the Angular zone (what most apps do); `zone-outside`: zone.js with `NgZone.runOutsideAngular`; `zoneless` |
 | Scenarios | `idle` 3 s · `drag` a node for 1.5 s with mouse events · `panzoom` 90 frames · `data` 10 live data updates of all nodes · `addRemove` 20 nodes + edges · `collapseExpand` all groups |
 | Metrics | CPU % and main-thread task / script ms (DevTools protocol), fps and p95 frame time, long tasks, libavoid runs and routing ms, Angular change detection ticks |

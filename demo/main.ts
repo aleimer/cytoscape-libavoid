@@ -89,7 +89,16 @@ const read = (): Partial<LibavoidOptions> => ({
 });
 
 const stats = $('stats');
-const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm' });
+// ?worker=1 routes in a Web Worker; the checkbox reloads the page with or without it
+const useWorker = new URLSearchParams(location.search).has('worker');
+const workerToggle = $<HTMLInputElement>('worker');
+workerToggle.checked = useWorker;
+workerToggle.addEventListener('change', () => {
+  location.search = workerToggle.checked ? '?worker=1' : '';
+});
+const worker = useWorker ? new Worker('build/routing.worker.js', { type: 'module' }) : undefined;
+
+const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm', worker });
 routing.ready.catch((err: Error) => (stats.textContent = 'Fehler: ' + err.message));
 cy.on('avoidrouted', (_evt, info: RoutedEventInfo) => {
   stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${info.totalMs.toFixed(1)} ms`;

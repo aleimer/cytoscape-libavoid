@@ -85,6 +85,7 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 | `routingParameters` | `{}` | raw libavoid `RoutingParameter`s, e.g. `{ crossingPenalty: 200 }` |
 | `routingOptions` | `{}` | raw libavoid `RoutingOption`s |
 | `wasmUrl` / `avoidLib` | – | see above |
+| `worker` | – | a `Worker` running `routing.worker.ts`, see below |
 
 Per edge, `data(sourceSide)` / `data(targetSide)` (`'top' | 'right' | 'bottom' | 'left'`)
 force the side an edge leaves or enters a node (docking ports).
@@ -116,7 +117,8 @@ material-flow graphs of the Angular bench):
 const routing = cy.libavoid(options); // new instance (replaces a previous one)
 cy.libavoid();                        // current instance
 routing.ready;                        // Promise, resolves after the first routing
-routing.route();                      // route now, returns Map<edgeId, points>
+routing.route();                      // route now, returns Map<edgeId, points> (not with a worker)
+await routing.refresh();              // route now, also with a worker
 routing.getRoute(edgeOrId);           // [{x, y}, …] incl. both endpoints
 routing.setOptions({ ports: 'auto' });// change options and re-route
 routing.destroy();                    // stop and restore the original edge styles
@@ -127,6 +129,25 @@ cy.on('avoiderror', (evt, error) => { … }); // an automatic re-route failed (a
 
 The options are documented on the `LibavoidOptions` / `RoutingOptions` types,
 so they show up in the editor.
+
+### Routing in a Web Worker
+
+On large graphs a run takes 100 ms to 1 s (see Performance), which blocks the
+page. With a worker, the main thread only builds the model and applies the
+styles:
+
+```ts
+const worker = new Worker(new URL('./cytoscape-libavoid/routing.worker', import.meta.url), { type: 'module' });
+const routing = cy.libavoid({ worker, wasmUrl: 'libavoid.wasm' });
+```
+
+`src/routing.worker.ts` is the worker entry; Angular, Vite and webpack 5 bundle
+it from the `new URL(...)` pattern above. Only one request is in flight at a
+time; changes made meanwhile are sent as soon as it is answered. In the Angular
+bench (128 nodes, docking ports) a drag runs at 168 fps with a worker vs. 107
+fps without, adding and removing nodes costs 48 ms instead of 260 ms of script
+time. `route()` is synchronous and therefore not available with a worker; use
+`refresh()`. The demo runs with a worker via `?worker=1`.
 
 ### Using the classes directly
 

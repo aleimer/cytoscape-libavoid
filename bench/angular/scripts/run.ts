@@ -21,6 +21,7 @@ interface MatrixRun {
   ports?: 'auto' | 'docking';
   rerouteOnDrag?: boolean;
   dragRouteInterval?: number | 'auto';
+  worker?: boolean;
 }
 
 interface Matrix {
@@ -169,6 +170,7 @@ for (const run of runs) {
       ports: run.ports ?? 'docking',
       drag: run.rerouteOnDrag === false ? '0' : '1',
       interval: String(run.dragRouteInterval ?? 'auto'),
+      worker: run.worker ? '1' : '0',
     });
     pageErrors.length = 0;
     await send('Page.navigate', { url: `${base}?${q}` });

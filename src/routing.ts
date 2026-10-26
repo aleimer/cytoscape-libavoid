@@ -2,7 +2,7 @@
 // nothing about Cytoscape, so it can be tested in Node and reused with other
 // renderers.
 
-import { LibavoidRouter, SIDES } from './libavoid';
+import { LibavoidRouter, loadLibavoid, SIDES } from './libavoid';
 import type {
   Avoid,
   ConnRef,
@@ -101,6 +101,13 @@ export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
   routingParameters: Object.freeze({}),
   routingOptions: Object.freeze({}),
 });
+
+/** Only the routing options of a larger options object, e.g. to send them to a worker. */
+export function pickRoutingOptions(options: RoutingOptions): RoutingOptions {
+  const picked: Partial<Record<keyof RoutingOptions, unknown>> = {};
+  for (const key of Object.keys(defaultRoutingOptions) as Array<keyof RoutingOptions>) picked[key] = options[key];
+  return picked as RoutingOptions;
+}
 
 /** Merges options onto the defaults; the nested objects are copied so they are never shared. */
 export function resolveRoutingOptions<T extends RoutingOptions>(defaults: Readonly<T>, options: Partial<T>): T {
@@ -362,4 +369,31 @@ function continuesStraight(a: Point, b: Point, c: Point): boolean {
   const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   const sameDirection = (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y) >= 0;
   return Math.abs(cross) < COLLINEAR_TOLERANCE && sameDirection;
+}
+
+// --- routing in a Web Worker ---------------------------------------------------
+
+/** Message from the plugin to routing.worker.ts. */
+export interface RouteRequest {
+  id: number;
+  /** Absolute URL of libavoid.wasm; only the first request loads it. */
+  wasmUrl?: string;
+  model: GraphModel;
+  options: RoutingOptions;
+}
+
+/** Answer of routing.worker.ts to a RouteRequest with the same id. */
+export type RouteResponse =
+  { id: number; routes: Array<[edgeId: string, points: Point[]]>; routingMs: number } | { id: number; error: string };
+
+/** Routes one request, loading libavoid on first use. Runs inside routing.worker.ts. */
+export async function answerRouteRequest(request: RouteRequest): Promise<RouteResponse> {
+  try {
+    const avoid = await loadLibavoid(request.wasmUrl);
+    const start = performance.now();
+    const routes = new EdgeRouter(avoid, request.options).route(request.model);
+    return { id: request.id, routes: [...routes], routingMs: performance.now() - start };
+  } catch (error) {
+    return { id: request.id, error: error instanceof Error ? error.message : String(error) };
+  }
 }

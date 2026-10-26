@@ -100,6 +100,10 @@ export async function attachPlugins(cy: Core, config: BenchConfig): Promise<void
       rerouteOnDrag: config.rerouteOnDrag,
       dragRouteInterval: config.dragRouteInterval,
       wasmUrl: 'libavoid.wasm', // copied next to index.html by angular.json
+      // the Angular build bundles the worker from this new URL(...) pattern
+      worker: config.worker
+        ? new Worker(new URL('./cytoscape-libavoid/routing.worker', import.meta.url), { type: 'module' })
+        : undefined,
     });
     await routing.ready;
   }

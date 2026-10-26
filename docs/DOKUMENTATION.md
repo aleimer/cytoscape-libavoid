@@ -66,6 +66,7 @@ cytoscape-libavoid/
 │   ├── routing.ts                   Routing-Logik: Klasse EdgeRouter, Docking Ports, simplify
 │   ├── libavoid.ts                  libavoid-Anbindung: loadLibavoid, Klasse LibavoidRouter
 │   ├── edge-style.ts                Route → Cytoscape-Style, Klasse EdgeStyler
+│   ├── routing.worker.ts            Einstieg für das optionale Routing im Web Worker
 │   ├── libavoid-js.d.ts             Ersatz für die fehlerhaften Typen von libavoid-js
 │   └── README.md                    Einbindungsanleitung (englisch)
 ├── demo/
@@ -259,7 +260,8 @@ Mögliche `routingOptions` (libavoid):
 | Option | Typ | Standard | Beschreibung |
 |---|---|---|---|
 | `wasmUrl` | `string` | – | URL von `libavoid.wasm`, siehe [Abschnitt 4](#4-die-webassembly-datei). Wirkt nur beim ersten Laden der Seite. |
-| `avoidLib` | `object` | – | Bereits geladene libavoid-js-Instanz (`AvoidLib.getInstance()`). Überspringt das Laden. |
+| `avoidLib` | `object` | – | Bereits geladene libavoid-js-Instanz (`AvoidLib.getInstance()`). Überspringt das Laden. Nicht mit `worker`. |
+| `worker` | `Worker` | – | Routet in diesem Web Worker (mit `routing.worker.ts`) statt im Haupt-Thread, siehe [Routing im Web Worker](#routing-im-web-worker). |
 
 ## 7. Daten an Knoten und Kanten
 
@@ -306,7 +308,7 @@ Wird normalerweise über `cy.libavoid()` erzeugt. Direkt geht es mit
 
 | Eigenschaft | Typ | Beschreibung |
 |---|---|---|
-| `ready` | `Promise<LibavoidRouting>` | Erfüllt sich, sobald libavoid geladen ist und der erste Routing-Lauf fertig ist. Wird abgelehnt, wenn die `.wasm` nicht geladen werden kann. |
+| `ready` | `Promise<LibavoidRouting>` | Erfüllt sich, sobald libavoid geladen ist und der erste Routing-Lauf fertig ist. Wird abgelehnt, wenn die `.wasm` nicht geladen werden kann oder der erste Lauf fehlschlägt. |
 | `options` | `object` | Aktuelle Optionen (Standardwerte und eigene Werte zusammengeführt). Nur lesen, ändern über `setOptions()`. |
 | `routes` | `Map<string, Point[]>` | Ergebnis des letzten Laufs: Kanten-ID → Punkte. |
 | `cy` | Core | Die zugehörige Cytoscape-Instanz. |
@@ -317,8 +319,15 @@ liegt am Rand der Quelle, der letzte am Rand des Ziels.
 #### `route()` → `Map<string, Point[]>`
 
 Routet alle passenden Kanten sofort und synchron, setzt die Styles und löst
-`avoidrouted` aus. Wirft einen Fehler, wenn `ready` noch nicht erfüllt ist.
+`avoidrouted` aus. Wirft einen Fehler, wenn `ready` noch nicht erfüllt ist,
+und ist mit `worker` nicht verfügbar (dort `refresh()` nehmen).
 Bei `live: true` müssen Sie `route()` normalerweise nicht selbst aufrufen.
+
+#### `refresh()` → `Promise<Map<string, Point[]>>`
+
+Wie `route()`, aber asynchron und damit auch mit `worker` nutzbar. Läuft
+gerade eine Anfrage im Worker, wartet `refresh()` auf eine neue mit dem
+aktuellen Stand. Fehler lehnen das Promise ab.
 
 #### `scheduleRoute()`
 
@@ -340,7 +349,8 @@ const laenge = pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p
 
 Führt die übergebenen Optionen mit den aktuellen zusammen und routet sofort
 neu. Ein Wechsel von `live` bindet die Event-Listener an oder löst sie.
-`wasmUrl` und `avoidLib` wirken nach dem ersten Laden nicht mehr.
+`wasmUrl`, `avoidLib` und `worker` wirken nach dem Erzeugen nicht mehr. Mit
+`worker` kommen Fehler als Event `avoiderror`, sonst wirft `setOptions()`.
 
 ```js
 routing.setOptions({ ports: 'auto', cornerRadius: 0 });
@@ -349,13 +359,14 @@ routing.setOptions({ ports: 'auto', cornerRadius: 0 });
 #### `model()` → `{ nodes, edges }`
 
 Liefert das Datenmodell, das an den Routing-Kern geht (siehe
-[8.5](#85-routing-kern-ohne-cytoscape)). Hilfreich zum Debuggen.
+[8.5](#85-routing-ohne-cytoscape)). Hilfreich zum Debuggen.
 
 #### `destroy()`
 
 Beendet das Routing: Listener werden entfernt, die gesetzten Style-Bypässe
 gelöscht und die Kanten zeigen wieder ihren Stylesheet-Stil. Danach gibt
-`cy.libavoid()` eine neue Instanz zurück.
+`cy.libavoid()` eine neue Instanz zurück. Ein `worker` läuft weiter (er gehört
+der Anwendung). `cy.destroy()` beendet das Routing automatisch mit.
 
 ### 8.4 Weitere Exporte
 
@@ -606,6 +617,40 @@ const d = (pts) => 'M' + pts.map((p) => `${p.x},${p.y}`).join('L');
 const pfade = [...routing.routes].map(([id, pts]) => `<path id="${id}" d="${d(pts)}"/>`);
 ```
 
+### Routing im Web Worker
+
+Bei großen Graphen dauert ein Lauf 100 ms bis 1 s (siehe
+[Performance](#12-performance)) und blockiert so lange die Seite. Mit einem
+Worker baut der Haupt-Thread nur das Modell und setzt die Styles; libavoid
+läuft im Worker.
+
+```ts
+const worker = new Worker(new URL('./cytoscape-libavoid/routing.worker', import.meta.url), { type: 'module' });
+const routing = cy.libavoid({ worker, wasmUrl: 'libavoid.wasm' });
+await routing.ready;
+```
+
+- Angular, Vite und webpack 5 erkennen das Muster `new Worker(new URL(...), …)`
+  und bündeln `routing.worker.ts` als eigene Datei. Bei esbuild ohne dieses
+  Feature den Worker als eigenen Einstiegspunkt bauen (so macht es
+  `scripts/build-demo.ts`).
+- `wasmUrl` wird vor dem Senden gegen die Seiten-URL aufgelöst, denn der
+  Worker würde relative URLs gegen sein eigenes Skript auflösen.
+- Es ist immer nur eine Anfrage unterwegs. Änderungen in der Zwischenzeit
+  werden gesendet, sobald die Antwort da ist; bei schnellen Änderungen wird so
+  immer der neueste Stand geroutet.
+- `route()` ist synchron und daher mit Worker nicht verfügbar, `refresh()`
+  funktioniert in beiden Fällen.
+- `dragRouteInterval: 'auto'` legt mit Worker keine Pause ein, weil der
+  Haupt-Thread nicht blockiert.
+- Mehrere Instanzen dürfen sich einen Worker teilen. Das Plugin beendet ihn
+  nicht; bei Bedarf `worker.terminate()` selbst aufrufen.
+
+Im Angular-Benchmark (Graph M, Docking Ports) läuft das Ziehen mit Worker mit
+168 fps statt 107 fps ohne, ohne lange Tasks im Haupt-Thread; Knoten
+hinzufügen und entfernen kostet 48 ms statt 260 ms Skriptzeit. Die Demo nutzt
+den Worker mit `?worker=1`.
+
 ## 12. Performance
 
 Ein Lauf routet immer den kompletten Graphen neu. Gemessen mit `npm run perf`
@@ -726,6 +771,7 @@ Aufbau des Quellcodes (eine Klasse pro Datei):
 | `routing.ts` | `EdgeRouter` | Routing-Logik und Docking Ports. Kennt nur das einfache Modell, nicht Cytoscape. |
 | `libavoid.ts` | `LibavoidRouter` | libavoid-Anbindung: lädt die `.wasm`, kapselt die libavoid-API und deren Speicherverwaltung. |
 | `edge-style.ts` | `EdgeStyler` | Route ↔ Cytoscape-Style (reine Geometrie) und das Setzen / Entfernen der Styles. |
+| `routing.worker.ts` | – | Einstieg des Web Workers: beantwortet `RouteRequest`s mit `answerRouteRequest()` aus `routing.ts`. |
 
 Wichtig beim Arbeiten mit libavoid-js: Jedes mit `new` erzeugte Objekt liegt im
 WebAssembly-Speicher und muss mit `.delete()` freigegeben werden. Das übernimmt

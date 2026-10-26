@@ -1,12 +1,13 @@
-// Bundles demo/main.ts (which imports src) into
-// demo/build/ and copies libavoid.wasm next to it.
+// Bundles demo/main.ts (which imports src) and the routing worker into
+// demo/build/ and copies libavoid.wasm next to them. esbuild does not follow
+// `new Worker(new URL(...))`, so the worker is an entry point of its own.
 import { build } from 'esbuild';
 import { copyFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
 await build({
-  entryPoints: ['demo/main.ts'],
+  entryPoints: ['demo/main.ts', { in: 'src/routing.worker.ts', out: 'routing.worker' }],
   outdir: 'demo/build',
   bundle: true,
   format: 'esm',

@@ -1,7 +1,8 @@
 // Shared test helpers (not a test file itself: not matched by *.test.ts).
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, NodeSingular } from 'cytoscape';
-import type { GraphNode, Point } from '../src';
+import { answerRouteRequest } from '../src';
+import type { GraphNode, Point, RouteRequest, RouteResponse, RoutingWorker } from '../src';
 
 export interface Rect {
   x1: number;
@@ -67,4 +68,33 @@ export function countRoutes(cy: Core): { readonly count: number; reset(): void }
       count = 0;
     },
   };
+}
+
+type WorkerListener = (event: MessageEvent<RouteResponse>) => void;
+
+/**
+ * Stands in for a Web Worker running routing.worker.ts: answers asynchronously
+ * after `delayMs`. Requests go through structuredClone, as with a real worker.
+ */
+export class InProcessWorker implements RoutingWorker {
+  readonly requests: RouteRequest[] = [];
+  delayMs = 5;
+  private readonly listeners = new Set<WorkerListener>();
+
+  postMessage(request: RouteRequest): void {
+    const copy = structuredClone(request); // throws for functions and other uncloneable options
+    this.requests.push(copy);
+    setTimeout(async () => {
+      const response = await answerRouteRequest(copy);
+      for (const listener of this.listeners) listener({ data: response } as MessageEvent<RouteResponse>);
+    }, this.delayMs);
+  }
+
+  addEventListener(_type: 'message', listener: WorkerListener): void {
+    this.listeners.add(listener);
+  }
+
+  removeEventListener(_type: 'message', listener: WorkerListener): void {
+    this.listeners.delete(listener);
+  }
 }

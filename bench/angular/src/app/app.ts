@@ -59,6 +59,7 @@ declare global {
           <option value="250">250 ms</option>
         </select>
       </label>
+      <label><input type="checkbox" [checked]="draft().worker" (change)="set('worker', !draft().worker)" /> worker</label>
       <button (click)="apply()">Apply (reload)</button>
       <span class="sep"></span>
       @for (s of scenarios(); track s.name) {

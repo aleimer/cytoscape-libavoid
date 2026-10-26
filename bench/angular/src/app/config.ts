@@ -1,5 +1,5 @@
 // Bench configuration, read from the URL so every run starts from a fresh page:
-//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=docking&drag=1&interval=auto
+//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=docking&drag=1&interval=auto&worker=0
 
 export type ZoneMode = 'zoneless' | 'zone' | 'zone-outside';
 export type PluginName = 'libavoid' | 'gridGuide' | 'expandCollapse' | 'htmlLabel';
@@ -14,6 +14,8 @@ export interface BenchConfig {
   rerouteOnDrag: boolean;
   /** libavoid dragRouteInterval: 'auto' or ms between re-routes while dragging (0 = every frame) */
   dragRouteInterval: number | 'auto';
+  /** libavoid routes in a Web Worker */
+  worker: boolean;
   cornerRadius: number;
 }
 
@@ -24,6 +26,7 @@ export const DEFAULT_CONFIG: BenchConfig = {
   ports: 'docking',
   rerouteOnDrag: true,
   dragRouteInterval: 'auto',
+  worker: false,
   cornerRadius: 6,
 };
 
@@ -43,6 +46,7 @@ export function readConfig(search = location.search): BenchConfig {
     ports: pick('ports', ['auto', 'docking'], DEFAULT_CONFIG.ports),
     rerouteOnDrag: q.has('drag') ? q.get('drag') !== '0' : DEFAULT_CONFIG.rerouteOnDrag,
     dragRouteInterval: readInterval(q.get('interval')),
+    worker: q.has('worker') ? q.get('worker') === '1' : DEFAULT_CONFIG.worker,
     cornerRadius: q.has('radius') ? Number(q.get('radius')) || 0 : DEFAULT_CONFIG.cornerRadius,
   };
 }
@@ -55,6 +59,7 @@ export function configToQuery(c: BenchConfig): string {
     ports: c.ports,
     drag: c.rerouteOnDrag ? '1' : '0',
     interval: String(c.dragRouteInterval),
+    worker: c.worker ? '1' : '0',
     radius: String(c.cornerRadius),
   });
   return `?${q}`;
@@ -63,7 +68,7 @@ export function configToQuery(c: BenchConfig): string {
 export function describeConfig(c: BenchConfig): string {
   const plugins = c.plugins.length ? c.plugins.join('+') : 'none';
   const drag = !c.rerouteOnDrag ? ' noDragRoute' : c.dragRouteInterval === 'auto' ? '' : ` interval=${c.dragRouteInterval}`;
-  const libavoid = c.plugins.includes('libavoid') ? ` ${c.ports}${drag}` : '';
+  const libavoid = c.plugins.includes('libavoid') ? ` ${c.ports}${drag}${c.worker ? ' worker' : ''}` : '';
   return `${c.size} ${c.zone} [${plugins}]${libavoid}`;
 }
 
