@@ -6,6 +6,8 @@ Cytoscape.js extension for obstacle-avoiding edge routing with
 
 Full developer documentation (German): [docs/DOKUMENTATION.md](docs/DOKUMENTATION.md)
 
+Changes and how to update from 0.1.0: [CHANGELOG.md](CHANGELOG.md)
+
 - orthogonal (taxi-style) or polyline routes that go around nodes
 - **docking ports**: every edge gets its own place on the outgoing / incoming
   node side, stacked by edge width and sorted to avoid crossings right at the node
