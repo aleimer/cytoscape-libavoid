@@ -60,8 +60,14 @@ export interface RoutingOptions {
    * @default 'auto'
    */
   ports: 'auto' | 'docking';
-  /** Docking ports: direction edges run in, e.g. `'right'` = leave on the right, enter on the left. @default 'right' */
-  flowDirection: FlowDirection;
+  /**
+   * Docking ports: direction edges run in, e.g. `'right'` = leave on the right, enter on
+   * the left. `'auto'`: per edge, the sides of its two nodes that face each other (where
+   * the gap between them is larger), so edges running against the main flow do not loop
+   * around their nodes.
+   * @default 'right'
+   */
+  flowDirection: FlowDirection | 'auto';
   /** Docking ports: gap between neighbouring ports on a side (px). @default 2 */
   portSpacing: number;
   /** Clearance kept around nodes (px). @default 12 */
@@ -320,8 +326,11 @@ interface PortSlot {
 export function computeDockingPorts(model: GraphModel, options: Partial<RoutingOptions> = {}): Map<string, EdgePorts> {
   const { flowDirection = defaultRoutingOptions.flowDirection, portSpacing = defaultRoutingOptions.portSpacing } =
     options;
-  const sides: { out: Side; in: Side } | undefined = FLOW_SIDES[flowDirection];
-  if (!sides) throw new Error(`cytoscape-libavoid: unknown flowDirection "${flowDirection}"`);
+  const fixedSides: { out: Side; in: Side } | undefined =
+    flowDirection === 'auto' ? undefined : FLOW_SIDES[flowDirection];
+  if (!fixedSides && flowDirection !== 'auto') {
+    throw new Error(`cytoscape-libavoid: unknown flowDirection "${flowDirection}"`);
+  }
 
   const nodes = new Map(model.nodes.map((node) => [node.id, node]));
   const slotsByNode = new Map<GraphNode, Partial<Record<Side, PortSlot[]>>>();
@@ -336,6 +345,7 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
     const source = nodes.get(edge.source);
     const target = nodes.get(edge.target);
     if (!source || !target) continue;
+    const sides = fixedSides ?? facingSides(source, target);
     // the offsets are placeholders until the ports of each side are spread out below
     const edgePorts: EdgePorts = {
       source: { side: edge.sourceSide ?? sides.out, offset: 0.5 },
@@ -359,6 +369,16 @@ export function computeDockingPorts(model: GraphModel, options: Partial<RoutingO
     }
   }
   return ports;
+}
+
+/** The sides of two nodes that face each other, on the axis where the gap between them is larger. */
+function facingSides(source: GraphNode, target: GraphNode): { out: Side; in: Side } {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const horizontalGap = Math.abs(dx) - (source.width + target.width) / 2;
+  const verticalGap = Math.abs(dy) - (source.height + target.height) / 2;
+  if (horizontalGap >= verticalGap) return FLOW_SIDES[dx >= 0 ? 'right' : 'left'];
+  return FLOW_SIDES[dy >= 0 ? 'down' : 'up'];
 }
 
 /** Orders the slots of a side by where their other node lies along it (x for top / bottom, y for left / right). */

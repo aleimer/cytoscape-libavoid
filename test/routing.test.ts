@@ -226,3 +226,27 @@ test('docking ports on a top / bottom side are ordered by x, whatever the flow d
   const offsets = ['left', 'middle', 'right'].map((id) => ports.get(id)?.source.offset ?? NaN);
   assert.ok(offsets[0] < offsets[1] && offsets[1] < offsets[2], `ordered left to right: ${offsets}`);
 });
+
+test("flowDirection 'auto' docks every edge on the sides its nodes face each other with", () => {
+  const model: GraphModel = {
+    nodes: [
+      { id: 'a', x: 0, y: 0, width: 80, height: 40 },
+      { id: 'back', x: -300, y: 20, width: 80, height: 40 }, // to the left: against a rightward flow
+      { id: 'below', x: 10, y: 250, width: 80, height: 40 },
+    ],
+    edges: [
+      { id: 'a-back', source: 'a', target: 'back', width: 4 },
+      { id: 'a-below', source: 'a', target: 'below', width: 4 },
+    ],
+  };
+  const ports = computeDockingPorts(model, { flowDirection: 'auto' });
+  const sides = (id: string) => [ports.get(id)?.source.side, ports.get(id)?.target.side];
+  assert.deepEqual(sides('a-back'), ['left', 'right']);
+  assert.deepEqual(sides('a-below'), ['bottom', 'top']);
+
+  const back = new EdgeRouter(avoid, { ports: 'docking', flowDirection: 'auto' }).route(model).get('a-back');
+  assert.ok(back);
+  assert.equal(back[0]!.x, -40, 'leaves a on the left');
+  assert.equal(back[back.length - 1]!.x, -260, 'enters back on the right, without a loop around a');
+  assert.ok(back.every((point) => point.x <= -40 && point.x >= -260));
+});
