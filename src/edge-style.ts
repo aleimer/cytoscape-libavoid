@@ -116,13 +116,24 @@ export class EdgeStyler {
     this.cy = cy;
   }
 
-  /** Styles every routed edge and restores the edges that are no longer routed. */
-  apply(routes: ReadonlyMap<string, readonly Point[]>, cornerRadius: number): void {
+  /**
+   * Styles every routed edge and restores the edges that are no longer routed.
+   *
+   * @param nodePositions positions of the nodes when the routes were computed. The
+   *   edge ends are anchored relative to them, so routes that arrive late (from a
+   *   worker) still start and end at their nodes if those moved in the meantime.
+   *   Missing nodes use their current position.
+   */
+  apply(
+    routes: ReadonlyMap<string, readonly Point[]>,
+    cornerRadius: number,
+    nodePositions: ReadonlyMap<string, Point> = new Map(),
+  ): void {
     this.cy.batch(() => {
       for (const edgeId of [...this.applied.keys()]) {
         if (!routes.has(edgeId)) this.restore(edgeId);
       }
-      for (const [edgeId, points] of routes) this.applyRoute(edgeId, points, cornerRadius);
+      for (const [edgeId, points] of routes) this.applyRoute(edgeId, points, cornerRadius, nodePositions);
     });
   }
 
@@ -133,9 +144,19 @@ export class EdgeStyler {
     });
   }
 
-  private applyRoute(edgeId: string, points: readonly Point[], cornerRadius: number): void {
+  private applyRoute(
+    edgeId: string,
+    points: readonly Point[],
+    cornerRadius: number,
+    nodePositions: ReadonlyMap<string, Point>,
+  ): void {
     const edge = this.cy.getElementById(edgeId);
-    const style = routeToEdgeStyle(points, edge.source().position(), edge.target().position(), cornerRadius);
+    if (!edge.isEdge()) return; // removed since the routes were computed
+    const source = edge.source();
+    const target = edge.target();
+    const sourceCentre = nodePositions.get(source.id()) ?? source.position();
+    const targetCentre = nodePositions.get(target.id()) ?? target.position();
+    const style = routeToEdgeStyle(points, sourceCentre, targetCentre, cornerRadius);
     if (!style) return;
     // every style update is costly and, with compound nodes, fires 'style' on all nodes
     const styleKey = JSON.stringify(style);

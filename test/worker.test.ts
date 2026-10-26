@@ -102,3 +102,61 @@ test('destroy() while a worker request is in flight ignores its answer', async (
     cy.destroy();
   }
 });
+
+test('a late worker answer keeps the edge ends on nodes that moved meanwhile', async () => {
+  const cy = createCy(obstacleElements());
+  const worker = new InProcessWorker();
+  const routing = cy.libavoid({ worker });
+  try {
+    await routing.ready;
+    worker.delayMs = 60;
+    const refreshed = routing.refresh(); // sent with a at (0, 0)
+    cy.$id('a').position({ x: 0, y: 50 }); // moves while the request is in flight
+    await refreshed;
+    const start = routing.getRoute('ab')?.[0];
+    assert.ok(start);
+    // relative to a's position at request time, so Cytoscape draws the end at a's new position
+    assert.equal(cy.$id('ab').style('source-endpoint'), `${start.x}px ${start.y}px`);
+  } finally {
+    cy.destroy();
+  }
+});
+
+test('edges removed while a worker request is in flight are skipped', async () => {
+  const cy = createCy([
+    ...obstacleElements(),
+    { data: { id: 'd' }, position: { x: 300, y: 200 } },
+    { data: { id: 'ad', source: 'a', target: 'd' } },
+  ]);
+  const worker = new InProcessWorker();
+  const routing = cy.libavoid({ worker });
+  try {
+    await routing.ready;
+    worker.delayMs = 30;
+    const refreshed = routing.refresh();
+    cy.$id('ad').remove();
+    await refreshed; // must not throw on the missing edge
+    await wait(80);
+    assert.equal(routing.getRoute('ad'), undefined);
+    assert.equal(cy.$id('ab').style('curve-style'), 'segments');
+  } finally {
+    cy.destroy();
+  }
+});
+
+test('setOptions during a worker request is routed afterwards', async () => {
+  const cy = createCy(obstacleElements());
+  const worker = new InProcessWorker();
+  const routing = cy.libavoid({ worker, ports: 'auto' });
+  try {
+    await routing.ready;
+    worker.delayMs = 40;
+    cy.$id('c').position({ x: 150, y: 10 }); // starts a request
+    await wait(10);
+    routing.setOptions({ ports: 'docking' }); // while it is in flight
+    await wait(150);
+    assert.equal(worker.requests.at(-1)?.options.ports, 'docking');
+  } finally {
+    cy.destroy();
+  }
+});

@@ -129,7 +129,7 @@ export class LibavoidRouting {
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
   /** The worker request in flight; one at a time, changes in between are sent when it is answered. */
-  private workerRequest: { id: number; start: number; callers: Settle[] } | undefined;
+  private workerRequest: { id: number; start: number; snapshot: Snapshot; callers: Settle[] } | undefined;
   /** Callers that asked for a result while a request was in flight; they get the next one. */
   private callersForNextRequest: Settle[] = [];
   /** The graph changed while a worker request was in flight. */
@@ -168,28 +168,7 @@ export class LibavoidRouting {
 
   /** Builds the plain graph model handed to the EdgeRouter. */
   model(): GraphModel {
-    const { cy, options } = this;
-    const nodes = cy.nodes(options.obstacles).filter((node) => node.visible());
-    const nodeIds = new Set(nodes.map((node) => node.id()));
-    const edges = cy
-      .edges(options.edges)
-      .toArray() // Collection.filter() loses the edge type
-      .filter((edge) => edge.visible() && nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()));
-
-    return {
-      nodes: nodes.map((node) => {
-        const box = node.boundingBox({ includeLabels: options.includeLabels, includeOverlays: false });
-        return { id: node.id(), x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2, width: box.w, height: box.h };
-      }),
-      edges: edges.map((edge) => ({
-        id: edge.id(),
-        source: edge.source().id(),
-        target: edge.target().id(),
-        width: Number(options.edgeWidth(edge)) || 0,
-        sourceSide: parseSide(edge.data('sourceSide')),
-        targetSide: parseSide(edge.data('targetSide')),
-      })),
-    };
+    return this.buildModel(new Map());
   }
 
   /** Routes all edges now, in this thread. Not available with a `worker`, see refresh(). */
@@ -197,7 +176,7 @@ export class LibavoidRouting {
     if (this.destroyed) return this.currentRoutes;
     if (this.worker) throw new Error('cytoscape-libavoid: route() is not available with a worker, use refresh()');
     if (!this.avoid) throw new Error('cytoscape-libavoid: not ready yet, await routing.ready first');
-    return this.routeHere(this.avoid, this.model());
+    return this.routeHere(this.avoid, this.snapshot());
   }
 
   /** Routes all edges now, in this thread or in the worker. */
@@ -211,7 +190,7 @@ export class LibavoidRouting {
       }
     }
     return new Promise((resolve, reject) => {
-      this.requestFromWorker(this.model(), [{ resolve: () => resolve(this.currentRoutes), reject }]);
+      this.requestFromWorker(this.snapshot(), [{ resolve: () => resolve(this.currentRoutes), reject }]);
     });
   }
 
@@ -238,7 +217,8 @@ export class LibavoidRouting {
     if (!this.started) return this; // the first run picks the options up
     if (this.options.live && !wasLive) this.startListening();
     if (!this.options.live && wasLive) this.stopListening();
-    if (this.worker) this.requestFromWorker(this.model());
+    this.lastModelKey = ''; // the options are not part of the model: a request in flight is followed by a new one
+    if (this.worker) this.requestFromWorker(this.snapshot());
     else this.route();
     return this;
   }
@@ -270,9 +250,9 @@ export class LibavoidRouting {
   private async start(): Promise<void> {
     if (this.destroyed) return;
     if (this.worker) {
-      await new Promise<void>((resolve, reject) => this.requestFromWorker(this.model(), [{ resolve, reject }]));
+      await new Promise<void>((resolve, reject) => this.requestFromWorker(this.snapshot(), [{ resolve, reject }]));
     } else if (this.avoid) {
-      this.routeHere(this.avoid, this.model());
+      this.routeHere(this.avoid, this.snapshot());
     }
     if (this.destroyed) return;
     this.started = true;
@@ -287,32 +267,35 @@ export class LibavoidRouting {
     if (this.destroyed) return;
     // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
     if (!this.options.rerouteOnDrag && this.isDragging()) return;
-    const model = this.model();
-    const modelKey = JSON.stringify(model);
-    if (modelKey === this.lastModelKey) return;
+    if (this.workerRequest) {
+      this.changedDuringRequest = true; // the model is built when the request is answered
+      return;
+    }
+    const snapshot = this.snapshot();
+    if (snapshot.key === this.lastModelKey) return;
     if (this.worker) {
-      this.requestFromWorker(model, [], modelKey);
+      this.requestFromWorker(snapshot);
       return;
     }
     if (!this.avoid) return;
     try {
-      this.routeHere(this.avoid, model, modelKey);
+      this.routeHere(this.avoid, snapshot);
     } catch (error) {
-      this.lastModelKey = modelKey; // do not retry the same input on every following event
+      this.lastModelKey = snapshot.key; // do not retry the same input on every following event
       this.reportError(error);
     }
   }
 
-  private routeHere(avoid: Avoid, model: GraphModel, modelKey = JSON.stringify(model)): ReadonlyMap<string, Point[]> {
+  private routeHere(avoid: Avoid, snapshot: Snapshot): ReadonlyMap<string, Point[]> {
     const start = performance.now();
-    const routes = new EdgeRouter(avoid, this.options).route(model);
-    this.lastModelKey = modelKey;
-    this.applyRoutes(routes, performance.now() - start, start);
+    const routes = new EdgeRouter(avoid, this.options).route(snapshot.model);
+    this.lastModelKey = snapshot.key;
+    this.applyRoutes(routes, snapshot, performance.now() - start, start);
     return routes;
   }
 
   /** Sends the model to the worker, or remembers to do so once the request in flight is answered. */
-  private requestFromWorker(model: GraphModel, callers: Settle[] = [], modelKey = JSON.stringify(model)): void {
+  private requestFromWorker(snapshot: Snapshot, callers: Settle[] = []): void {
     if (!this.worker || this.destroyed) {
       for (const caller of callers) caller.resolve();
       return;
@@ -322,14 +305,14 @@ export class LibavoidRouting {
       this.callersForNextRequest.push(...callers);
       return;
     }
-    this.lastModelKey = modelKey;
+    this.lastModelKey = snapshot.key;
     const request: RouteRequest = {
       id: ++lastRequestId,
       wasmUrl: absoluteUrl(this.options.wasmUrl),
-      model,
+      model: snapshot.model,
       options: pickRoutingOptions(this.options),
     };
-    this.workerRequest = { id: request.id, start: performance.now(), callers };
+    this.workerRequest = { id: request.id, start: performance.now(), snapshot, callers };
     this.worker.postMessage(request);
   }
 
@@ -344,7 +327,7 @@ export class LibavoidRouting {
       if (request.callers.length) for (const caller of request.callers) caller.reject(error);
       else this.reportError(error);
     } else {
-      this.applyRoutes(new Map(response.routes), response.routingMs, request.start);
+      this.applyRoutes(new Map(response.routes), request.snapshot, response.routingMs, request.start);
       for (const caller of request.callers) caller.resolve();
     }
 
@@ -354,19 +337,57 @@ export class LibavoidRouting {
     this.callersForNextRequest = [];
     if (waiting.length) {
       // they asked after this request was sent, so they get a fresh one even if nothing moved
-      this.requestFromWorker(this.model(), waiting);
+      this.requestFromWorker(this.snapshot(), waiting);
     } else if (changed) {
       this.scheduleRoute();
     }
   };
 
-  private applyRoutes(routes: Map<string, Point[]>, routingMs: number, start: number): void {
-    this.styler.apply(routes, this.options.cornerRadius);
+  private applyRoutes(routes: Map<string, Point[]>, snapshot: Snapshot, routingMs: number, start: number): void {
+    this.styler.apply(routes, this.options.cornerRadius, snapshot.nodePositions);
     this.currentRoutes = routes;
     const end = performance.now();
     this.lastRun = { end, duration: end - start };
     const info: RoutedEventInfo = { edges: routes.size, routingMs, totalMs: end - start };
     this.cy.emit(ROUTED_EVENT, [info]);
+  }
+
+  /** The routing input now: the model, serialised for comparison, and the node positions. */
+  private snapshot(): Snapshot {
+    const nodePositions = new Map<string, Point>();
+    const model = this.buildModel(nodePositions);
+    return { model, key: JSON.stringify(model), nodePositions };
+  }
+
+  /** @param nodePositions filled with the position of every node in the model */
+  private buildModel(nodePositions: Map<string, Point>): GraphModel {
+    const { cy, options } = this;
+    const nodes = cy
+      .nodes(options.obstacles)
+      .toArray() // Collection.filter() loses the element type
+      .filter((node) => node.visible());
+    const nodeIds = new Set(nodes.map((node) => node.id()));
+    const edges = cy
+      .edges(options.edges)
+      .toArray()
+      .filter((edge) => edge.visible() && nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()));
+
+    return {
+      nodes: nodes.map((node) => {
+        const { x, y } = node.position();
+        nodePositions.set(node.id(), { x, y });
+        const box = node.boundingBox({ includeLabels: options.includeLabels, includeOverlays: false });
+        return { id: node.id(), x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2, width: box.w, height: box.h };
+      }),
+      edges: edges.map((edge) => ({
+        id: edge.id(),
+        source: edge.source().id(),
+        target: edge.target().id(),
+        width: Number(options.edgeWidth(edge)) || 0,
+        sourceSide: parseSide(edge.data('sourceSide')),
+        targetSide: parseSide(edge.data('targetSide')),
+      })),
+    };
   }
 
   private reportError(error: unknown): void {
@@ -405,6 +426,14 @@ export class LibavoidRouting {
     this.cy.on(events, selector, handler);
     this.listeners.push([events, selector, handler]);
   }
+}
+
+/** The routing input at one moment; the routes of a run are styled relative to its node positions. */
+interface Snapshot {
+  model: GraphModel;
+  /** The model serialised, to compare with the last run. */
+  key: string;
+  nodePositions: Map<string, Point>;
 }
 
 /** Callbacks of a caller waiting for a worker result. */
