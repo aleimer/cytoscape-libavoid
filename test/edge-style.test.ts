@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeStyleToPoints, EdgeStyler, routeToEdgeStyle } from '../src';
+import { edgeStyleToPoints, EdgeStyler, labelOffset, routeToEdgeStyle } from '../src';
 import { createCy, obstacleElements } from './helpers';
 
 test('route -> cytoscape segment style round trip is exact', () => {
@@ -28,7 +28,7 @@ test('straight routes still produce a valid segments style', () => {
     { x: 0, y: 0 },
     { x: 100, y: 0 },
   ];
-  const style = routeToEdgeStyle(straight, { x: -10, y: 0 }, { x: 110, y: 0 }, 5);
+  const style = routeToEdgeStyle(straight, { x: -10, y: 0 }, { x: 110, y: 0 }, { cornerRadius: 5 });
   assert.ok(style);
   assert.equal(style['curve-style'], 'round-segments');
   assert.equal(style['segment-weights'], '0.5');
@@ -57,19 +57,64 @@ test('EdgeStyler applies routes, drops rounded corners and restores edges', () =
     { x: 280, y: 0 },
   ];
   try {
-    styler.apply(new Map([['ab', route]]), 8);
+    styler.apply(new Map([['ab', route]]), { cornerRadius: 8 });
     assert.equal(edge.style('curve-style'), 'round-segments');
 
-    styler.apply(new Map([['ab', route]]), 0);
+    styler.apply(new Map([['ab', route]]), { cornerRadius: 0 });
     assert.equal(edge.style('curve-style'), 'segments', 'switching back to sharp corners');
     assert.equal(edge.style('radius-type'), 'arc-radius', 'stylesheet default again, not the bypass');
 
-    styler.apply(new Map(), 0);
+    styler.apply(new Map());
     assert.equal(edge.style('curve-style'), 'taxi', 'edges that are no longer routed are restored');
 
-    styler.apply(new Map([['ab', route]]), 0);
+    styler.apply(new Map([['ab', route]]));
     styler.clear();
     assert.equal(edge.style('curve-style'), 'taxi', 'clear() restores everything');
+  } finally {
+    cy.destroy();
+  }
+});
+
+test('labelOffset moves the label from the middle segment point to the longest horizontal segment', () => {
+  // inner points: (60,0) (60,-50) (280,-50) -> Cytoscape puts the label on the middle one, (60,-50)
+  const route = [
+    { x: 20, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: -50 },
+    { x: 280, y: -50 },
+    { x: 280, y: 0 },
+  ];
+  assert.deepEqual(labelOffset(route, route.slice(1, -1)), { x: 170 - 60, y: 0 });
+  // an even number of inner points: the middle between the two middle ones
+  const even = [
+    { x: 0, y: 0 },
+    { x: 0, y: 100 },
+    { x: 40, y: 100 },
+    { x: 40, y: 400 },
+  ];
+  assert.deepEqual(
+    labelOffset(even, even.slice(1, -1)),
+    { x: 40 - 20, y: 250 - 100 },
+    'the vertical one is much longer',
+  );
+});
+
+test("labelPosition 'longest-segment' sets the label margin, switching back removes it", () => {
+  const cy = createCy(obstacleElements());
+  const styler = new EdgeStyler(cy);
+  const edge = cy.$id('ab');
+  const route = [
+    { x: 20, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: -50 },
+    { x: 280, y: -50 },
+    { x: 280, y: 0 },
+  ];
+  try {
+    styler.apply(new Map([['ab', route]]), { labelPosition: 'longest-segment' });
+    assert.equal(edge.numericStyle('text-margin-x'), 110);
+    styler.apply(new Map([['ab', route]]), { labelPosition: 'middle' });
+    assert.equal(edge.numericStyle('text-margin-x'), 0, 'the bypass is gone');
   } finally {
     cy.destroy();
   }

@@ -73,6 +73,12 @@ const cy = cytoscape({
         'target-arrow-color': '#e08a2c',
         'arrow-scale': 0.6,
         'curve-style': 'taxi',
+        label: 'data(q)',
+        'font-size': 10,
+        color: '#7a4a12',
+        'text-background-color': '#fafafa',
+        'text-background-opacity': 0.85,
+        'text-background-padding': '1px',
       },
     },
   ],
@@ -86,6 +92,7 @@ const read = (): Partial<LibavoidOptions> => ({
   flowDirection: select('flowDirection') as LibavoidOptions['flowDirection'],
   cornerRadius: Number($<HTMLInputElement>('cornerRadius').value),
   rerouteOnDrag: $<HTMLInputElement>('rerouteOnDrag').checked,
+  labelPosition: $<HTMLInputElement>('labelPosition').checked ? 'longest-segment' : 'middle',
 });
 
 const stats = $('stats');
@@ -99,12 +106,14 @@ workerToggle.addEventListener('change', () => {
 const worker = useWorker ? new Worker('build/routing.worker.js', { type: 'module' }) : undefined;
 
 const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm', worker });
+// for trying things out in the browser console
+Object.assign(window, { demo: { cy, routing } });
 routing.ready.catch((err: Error) => (stats.textContent = 'Fehler: ' + err.message));
 cy.on('avoidrouted', (_evt, info: RoutedEventInfo) => {
   stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${info.totalMs.toFixed(1)} ms`;
 });
 
-for (const id of ['ports', 'routingType', 'flowDirection', 'cornerRadius', 'rerouteOnDrag']) {
+for (const id of ['ports', 'routingType', 'flowDirection', 'cornerRadius', 'rerouteOnDrag', 'labelPosition']) {
   $(id).addEventListener('input', () => routing.setOptions(read()));
 }
 

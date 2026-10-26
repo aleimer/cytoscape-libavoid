@@ -6,13 +6,14 @@
 import type cytoscapeFactory from 'cytoscape';
 import type { Core, EdgeSingular, EventHandler } from 'cytoscape';
 import { EdgeStyler } from './edge-style';
+import type { EdgeStyleOptions } from './edge-style';
 import { loadLibavoid, SIDES } from './libavoid';
 import type { Avoid, Point, Side } from './libavoid';
 import { defaultRoutingOptions, EdgeRouter, pickRoutingOptions, resolveRoutingOptions, WorkerRouter } from './routing';
 import type { GraphModel, RoutingOptions, RoutingWorker } from './routing';
 
-export { routeToEdgeStyle, edgeStyleToPoints, EdgeStyler } from './edge-style';
-export type { EdgeSegmentStyle } from './edge-style';
+export { edgeStyleToPoints, EdgeStyler, labelOffset, routeToEdgeStyle } from './edge-style';
+export type { EdgeSegmentStyle, EdgeStyleOptions } from './edge-style';
 export { loadLibavoid, LibavoidRouter } from './libavoid';
 export { findDetours, routeQuality, separateOverlaps } from './separation';
 export type { DetourOptions, RouteQuality } from './separation';
@@ -64,6 +65,13 @@ export interface LibavoidOptions extends RoutingOptions {
   edgeWidth: (edge: EdgeSingular) => number;
   /** 0 = sharp corners, > 0 = rounded corners with this radius (px). @default 0 */
   cornerRadius: number;
+  /**
+   * `'middle'`: Cytoscape's label position, on routes with an odd number of bends a corner.
+   * `'longest-segment'`: the centre of the longest segment (a horizontal one if it is at
+   * least half as long); this replaces the edges' `text-margin-x` / `-y`.
+   * @default 'middle'
+   */
+  labelPosition: EdgeStyleOptions['labelPosition'];
   /** Re-route automatically when elements are added, removed, moved or changed. @default true */
   live: boolean;
   /** With `live`: re-route continuously while a node is dragged; false = only on release. @default true */
@@ -94,6 +102,7 @@ export const defaults: Readonly<LibavoidOptions> = Object.freeze({
   includeLabels: false,
   edgeWidth: (edge: EdgeSingular) => Number(edge.numericStyle('width')),
   cornerRadius: 0,
+  labelPosition: 'middle',
   live: true,
   rerouteOnDrag: true,
   dragRouteInterval: 'auto',
@@ -304,7 +313,8 @@ export class LibavoidRouting {
   }
 
   private applyRoutes(routes: Map<string, Point[]>, snapshot: Snapshot, routingMs: number, start: number): void {
-    this.styler.apply(routes, this.options.cornerRadius, snapshot.nodePositions);
+    const { cornerRadius, labelPosition } = this.options;
+    this.styler.apply(routes, { cornerRadius, labelPosition }, snapshot.nodePositions);
     this.currentRoutes = routes;
     const end = performance.now();
     this.lastRun = { end, duration: end - start };
