@@ -85,6 +85,14 @@ interface PolyLine extends Deletable {
 /** A routed connection between two shapes; owned and freed by its router. */
 export interface ConnRef {
   displayRoute(): PolyLine;
+  setRoutingCheckpoints(checkpoints: CheckpointVector): void;
+}
+
+interface Checkpoint extends Deletable {}
+
+/** libavoid copies the checkpoints, so the vector can be freed after use. */
+interface CheckpointVector extends Deletable {
+  push_back(checkpoint: Checkpoint): void;
 }
 
 /** An initialised libavoid instance, as returned by `AvoidLib.getInstance()`. */
@@ -104,6 +112,8 @@ export interface Avoid {
   ) => ShapeConnectionPin;
   ConnEnd: new (shape: ShapeRef, pinClassId: number) => ConnEnd;
   ConnRef: new (router: Router, source: ConnEnd, target: ConnEnd) => ConnRef;
+  Checkpoint: new (point: AvoidPoint) => Checkpoint;
+  CheckpointVector: new () => CheckpointVector;
   RouterFlag: { readonly PolyLineRouting: EnumValue; readonly OrthogonalRouting: EnumValue };
   // Indexed by arbitrary strings because names come from user options at runtime.
   RoutingParameter: { readonly [name: string]: EnumValue | undefined };
@@ -206,6 +216,15 @@ export class LibavoidRouter {
     const sourceEnd = this.track(new this.avoid.ConnEnd(source, sourcePinClass));
     const targetEnd = this.track(new this.avoid.ConnEnd(target, targetPinClass));
     return new this.avoid.ConnRef(this.router, sourceEnd, targetEnd);
+  }
+
+  /** Makes the connector pass through these points, in order. */
+  setCheckpoints(connector: ConnRef, points: readonly Point[]): void {
+    const checkpoints = this.track(new this.avoid.CheckpointVector());
+    for (const { x, y } of points) {
+      checkpoints.push_back(this.track(new this.avoid.Checkpoint(this.track(new this.avoid.Point(x, y)))));
+    }
+    connector.setRoutingCheckpoints(checkpoints);
   }
 
   /** Routes all connectors. */

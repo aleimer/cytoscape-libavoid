@@ -11,7 +11,8 @@
     "build:demo": "node scripts/build-demo.ts",
     "demo": "npm run build:demo && node scripts/serve.ts",
     "format": "prettier --write \"**/*.{ts,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,json}\""
+    "format:check": "prettier --check \"**/*.{ts,json}\"",
+    "quality": "node --import ./scripts/ts-resolve.ts bench/quality.ts"
   },
   "author": "Philipp Kabala",
   "license": "MIT",

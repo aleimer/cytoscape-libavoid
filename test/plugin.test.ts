@@ -198,3 +198,27 @@ test('live: false routes only on request, switching it on starts listening', asy
     cy.destroy();
   }
 });
+
+test('routes while dragging are drafts; releasing routes once more in full', async () => {
+  const cy = createCy(obstacleElements());
+  const routes = countRoutes(cy);
+  const routing = cy.libavoid({ avoidLib: avoid, dragRouteInterval: 0 });
+  try {
+    await routing.ready;
+    routes.reset();
+    const c = cy.$id('c');
+    setGrabbed(c, true);
+    c.position({ x: 150, y: 20 });
+    await wait(30);
+    assert.equal(routes.count, 1, 'a draft while dragging');
+    setGrabbed(c, false);
+    c.emit('free'); // released where it is: same geometry
+    await wait(30);
+    assert.equal(routes.count, 2, 'the full run after the release');
+    cy.$id('a').data('value', 1);
+    await wait(30);
+    assert.equal(routes.count, 2, 'and nothing more while the geometry stays');
+  } finally {
+    cy.destroy();
+  }
+});

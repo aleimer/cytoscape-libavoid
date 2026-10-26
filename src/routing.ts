@@ -3,6 +3,7 @@
 // renderers.
 
 import { LibavoidRouter, loadLibavoid, SIDES } from './libavoid';
+import { findDetours, routeQuality, separateOverlaps } from './separation';
 import type {
   Avoid,
   ConnRef,
@@ -69,6 +70,19 @@ export interface RoutingOptions {
   idealNudgingDistance: number | 'auto';
   /** Spread apart edge ends that share a pin; `'auto'` = on for `ports: 'auto'`. @default 'auto' */
   nudgeConnectedSegments: boolean | 'auto';
+  /**
+   * Orthogonal routing: spread apart parallel segments that libavoid leaves on top of
+   * each other where many edges share a narrow gap between nodes (see separation.ts).
+   * @default true
+   */
+  separateOverlaps: boolean;
+  /**
+   * Orthogonal routing: where more edges share a narrow gap between nodes than fit
+   * into it, route the ones passing through over a long distance through the nearest
+   * wider gap instead (a second libavoid run, kept only if it overlaps less).
+   * @default true
+   */
+  detourCrowded: boolean;
   /** Raw libavoid routing parameters, e.g. `{ crossingPenalty: 200 }`. @default {} */
   routingParameters: Partial<Record<RoutingParameterName, number>>;
   /**
@@ -98,6 +112,8 @@ export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
   shapeBufferDistance: 12,
   idealNudgingDistance: 'auto',
   nudgeConnectedSegments: 'auto',
+  separateOverlaps: true,
+  detourCrowded: true,
   routingParameters: Object.freeze({}),
   routingOptions: Object.freeze({}),
 });
@@ -148,12 +164,34 @@ export class EdgeRouter {
    * @returns edge id -> route points, from the source end to the target end
    */
   route(model: GraphModel): Map<string, Point[]> {
-    const edges = routableEdges(model);
+    const routable: GraphModel = { nodes: model.nodes, edges: routableEdges(model) };
+    const routes = this.routeOnce(routable);
+    if (this.options.routingType !== 'orthogonal') return routes;
+    const { portSpacing, shapeBufferDistance } = this.options;
+    const finish = (candidate: Map<string, Point[]>): Map<string, Point[]> =>
+      this.options.separateOverlaps ? separateOverlaps(candidate, routable, portSpacing) : candidate;
+
+    const result = finish(routes);
+    if (!this.options.detourCrowded) return result;
+    // with docking ports a detour against the edge's direction becomes a loop around its node
+    const onTheWay = this.usesDockingPorts;
+    const detours = findDetours(routes, routable, { spacing: portSpacing, clearance: shapeBufferDistance, onTheWay });
+    if (detours.size === 0) return result;
+    const detoured = finish(this.routeOnce(routable, detours));
+    return isBetter(detoured, result, routable) ? detoured : result;
+  }
+
+  /** One libavoid run; `model.edges` must be routable, see routableEdges(). */
+  private routeOnce(model: GraphModel, checkpoints: ReadonlyMap<string, Point> = new Map()): Map<string, Point[]> {
     const router = new LibavoidRouter(this.avoid, this.options.routingType);
     try {
-      this.configure(router, edges);
+      this.configure(router, model.edges);
       const shapes = this.addShapes(router, model.nodes);
-      const connectors = this.addConnectors(router, shapes, { nodes: model.nodes, edges });
+      const connectors = this.addConnectors(router, shapes, model);
+      for (const [edgeId, point] of checkpoints) {
+        const connector = connectors.get(edgeId);
+        if (connector) router.setCheckpoints(connector, [point]);
+      }
       router.route();
       return readRoutes(router, connectors);
     } finally {
@@ -233,6 +271,17 @@ export class EdgeRouter {
     }
     return connectors;
   }
+}
+
+/**
+ * Detours are worth it if they clearly reduce the overlaps without making the
+ * routes much longer or crossing much more often. Overlaps weigh more than
+ * crossings: they hide edges, crossings do not.
+ */
+function isBetter(candidate: Map<string, Point[]>, current: Map<string, Point[]>, model: GraphModel): boolean {
+  const next = routeQuality(candidate, model);
+  const now = routeQuality(current, model);
+  return next.overlap < 0.8 * now.overlap && next.length < 1.1 * now.length && next.crossings < 1.5 * now.crossings + 5;
 }
 
 /** Edges whose endpoints both exist and differ. */

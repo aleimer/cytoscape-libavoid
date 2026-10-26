@@ -14,6 +14,8 @@ import type { GraphModel, RoutingOptions, RoutingWorker } from './routing';
 export { routeToEdgeStyle, edgeStyleToPoints, EdgeStyler } from './edge-style';
 export type { EdgeSegmentStyle } from './edge-style';
 export { loadLibavoid, LibavoidRouter } from './libavoid';
+export { findDetours, routeQuality, separateOverlaps } from './separation';
+export type { DetourOptions, RouteQuality } from './separation';
 export type { Avoid, PinSpec, Point, RoutingOptionName, RoutingParameterName, RoutingType, Side } from './libavoid';
 export {
   answerRouteRequest,
@@ -119,6 +121,8 @@ export class LibavoidRouting {
   private routePending = false;
   /** The model of the last run, serialised, to skip re-routes when nothing moved. */
   private lastModelKey = '';
+  /** The last run was a quicker one during a drag; the release routes once more in full. */
+  private lastRunWasDraft = false;
   /** End time and duration of the last run, for the pause between re-routes while dragging. */
   private lastRun = { end: 0, duration: 0 };
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
@@ -250,7 +254,7 @@ export class LibavoidRouting {
       return;
     }
     const snapshot = this.snapshot();
-    if (snapshot.key === this.lastModelKey) return;
+    if (snapshot.key === this.lastModelKey && (snapshot.draft || !this.lastRunWasDraft)) return;
     if (this.workerRouter) {
       this.routeInWorker(snapshot).catch(this.reportError);
       return;
@@ -266,8 +270,9 @@ export class LibavoidRouting {
 
   private routeHere(avoid: Avoid, snapshot: Snapshot): ReadonlyMap<string, Point[]> {
     const start = performance.now();
-    const routes = new EdgeRouter(avoid, this.options).route(snapshot.model);
+    const routes = new EdgeRouter(avoid, this.routingOptionsFor(snapshot)).route(snapshot.model);
     this.lastModelKey = snapshot.key;
+    this.lastRunWasDraft = snapshot.draft;
     this.applyRoutes(routes, snapshot, performance.now() - start, start);
     return routes;
   }
@@ -276,12 +281,13 @@ export class LibavoidRouting {
   private routeInWorker(snapshot: Snapshot): Promise<void> {
     const workerRouter = this.workerRouter!;
     this.lastModelKey = snapshot.key;
+    this.lastRunWasDraft = snapshot.draft;
     const start = performance.now();
     const run = workerRouter
       .route({
         wasmUrl: absoluteUrl(this.options.wasmUrl),
         model: snapshot.model,
-        options: pickRoutingOptions(this.options),
+        options: pickRoutingOptions(this.routingOptionsFor(snapshot)),
       })
       .then(({ routes, routingMs }) => {
         if (!this.destroyed) this.applyRoutes(routes, snapshot, routingMs, start);
@@ -310,7 +316,12 @@ export class LibavoidRouting {
   private snapshot(): Snapshot {
     const nodePositions = new Map<string, Point>();
     const model = this.buildModel(nodePositions);
-    return { model, key: JSON.stringify(model), nodePositions };
+    return { model, key: JSON.stringify(model), nodePositions, draft: this.isDragging() };
+  }
+
+  /** While dragging, routes are drafts: without the slower detours around crowded gaps. */
+  private routingOptionsFor(snapshot: Snapshot): LibavoidOptions {
+    return snapshot.draft && this.options.detourCrowded ? { ...this.options, detourCrowded: false } : this.options;
   }
 
   /** @param nodePositions filled with the position of every node in the model */
@@ -389,6 +400,8 @@ interface Snapshot {
   /** The model serialised, to compare with the last run. */
   key: string;
   nodePositions: Map<string, Point>;
+  /** Taken while a node is dragged, see routingOptionsFor(). */
+  draft: boolean;
 }
 
 /** A worker resolves relative URLs against its own script, so they are made absolute first. */
