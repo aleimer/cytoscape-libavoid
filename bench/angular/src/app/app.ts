@@ -46,7 +46,7 @@ declare global {
       }
       <label>Ports
         <select [value]="draft().ports" (change)="set('ports', $any($event.target).value)">
-          <option value="sankey">sankey</option>
+          <option value="docking">docking</option>
           <option value="auto">auto</option>
         </select>
       </label>

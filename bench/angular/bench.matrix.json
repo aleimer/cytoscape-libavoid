@@ -5,9 +5,9 @@
   "runs": [
     { "name": "cytoscape only", "plugins": [] },
     { "name": "plugins, no libavoid", "plugins": ["gridGuide", "expandCollapse", "htmlLabel"] },
-    { "name": "libavoid only", "plugins": ["libavoid"], "ports": "sankey" },
-    { "name": "all, sankey", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "sankey" },
+    { "name": "libavoid only", "plugins": ["libavoid"], "ports": "docking" },
+    { "name": "all, docking", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking" },
     { "name": "all, auto ports", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "auto" },
-    { "name": "all, sankey, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "sankey", "rerouteOnDrag": false }
+    { "name": "all, docking, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking", "rerouteOnDrag": false }
   ]
 }

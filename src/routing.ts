@@ -1,27 +1,41 @@
-// Pure routing core: takes a plain graph model, feeds it to libavoid and
-// returns the routed polylines. Knows nothing about Cytoscape, so it can be
-// tested in Node and reused with other renderers.
+// Routing logic: turns a plain graph model into routed polylines. Knows
+// nothing about Cytoscape, so it can be tested in Node and reused with other
+// renderers.
 
-import type { Avoid, ConnRef, Deletable, Point, Router, RoutingOptionName, RoutingParameterName, ShapeRef } from './libavoid.ts';
+import { LibavoidRouter, SIDES } from './libavoid';
+import type {
+  Avoid,
+  ConnRef,
+  Point,
+  RoutingOptionName,
+  RoutingParameterName,
+  RoutingType,
+  ShapeRef,
+  Side,
+} from './libavoid';
 
-export type Side = 'top' | 'right' | 'bottom' | 'left';
 export type FlowDirection = 'right' | 'left' | 'down' | 'up';
 
-/** x/y are node centres. */
+/** A node: obstacle for all edges and endpoint of its own. */
 export interface GraphNode {
   id: string;
+  /** Centre x. */
   x: number;
+  /** Centre y. */
   y: number;
-  w: number;
-  h: number;
+  width: number;
+  height: number;
 }
 
 export interface GraphEdge {
   id: string;
   source: string;
   target: string;
+  /** Stroke width, used to space docking ports and parallel segments. */
   width?: number;
+  /** Docking ports: side the edge leaves its source, instead of the one given by `flowDirection`. */
   sourceSide?: Side;
+  /** Docking ports: side the edge enters its target, instead of the one given by `flowDirection`. */
   targetSide?: Side;
 }
 
@@ -31,36 +45,72 @@ export interface GraphModel {
 }
 
 export interface RoutingOptions {
-  routingType: 'orthogonal' | 'polyline';
-  ports: 'auto' | 'sankey';
+  /**
+   * `'orthogonal'`: horizontal and vertical segments only.
+   * `'polyline'`: straight segments at any angle.
+   * @default 'orthogonal'
+   */
+  routingType: RoutingType;
+  /**
+   * `'auto'`: one shared pin in the middle of each node side; libavoid picks the side.
+   * `'docking'`: every edge gets its own docking port on the outgoing side of its
+   * source and the incoming side of its target, stacked by edge width and sorted
+   * so that edges do not cross right at the node.
+   * @default 'auto'
+   */
+  ports: 'auto' | 'docking';
+  /** Docking ports: direction edges run in, e.g. `'right'` = leave on the right, enter on the left. @default 'right' */
   flowDirection: FlowDirection;
+  /** Docking ports: gap between neighbouring ports on a side (px). @default 2 */
   portSpacing: number;
+  /** Clearance kept around nodes (px). @default 12 */
   shapeBufferDistance: number;
+  /** Distance between parallel segments (px); `'auto'` = widest edge + `portSpacing`. @default 'auto' */
   idealNudgingDistance: number | 'auto';
+  /** Spread apart edge ends that share a pin; `'auto'` = on for `ports: 'auto'`. @default 'auto' */
   nudgeConnectedSegments: boolean | 'auto';
+  /** Raw libavoid routing parameters, e.g. `{ crossingPenalty: 200 }`. @default {} */
   routingParameters: Partial<Record<RoutingParameterName, number>>;
+  /**
+   * Raw libavoid routing options, e.g. `{ nudgeSharedPathsWithCommonEndPoint: true }`.
+   * `performUnifyingNudgingPreprocessingStep` is off unless set here, because it is very slow.
+   * @default {}
+   */
   routingOptions: Partial<Record<RoutingOptionName, boolean>>;
 }
 
-/** offset is the proportional position (0..1) along the side. */
-export interface SankeyPort {
+/** Where an edge docks onto a node: `offset` runs from 0 to 1 along the side. */
+export interface DockingPort {
   side: Side;
   offset: number;
 }
 
-export interface SankeyPorts {
-  source: SankeyPort;
-  target: SankeyPort;
+export interface EdgePorts {
+  source: DockingPort;
+  target: DockingPort;
 }
 
-// libavoid ConnDirFlags (not exported as an enum by libavoid-js)
-export const DIR = { up: 1, down: 2, left: 4, right: 8, all: 15 } as const;
+export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
+  routingType: 'orthogonal',
+  ports: 'auto',
+  flowDirection: 'right',
+  portSpacing: 2,
+  shapeBufferDistance: 12,
+  idealNudgingDistance: 'auto',
+  nudgeConnectedSegments: 'auto',
+  routingParameters: Object.freeze({}),
+  routingOptions: Object.freeze({}),
+});
 
-export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
+/** Merges options onto the defaults; the nested objects are copied so they are never shared. */
+export function resolveRoutingOptions<T extends RoutingOptions>(defaults: Readonly<T>, options: Partial<T>): T {
+  const merged = { ...defaults, ...options };
+  merged.routingParameters = { ...merged.routingParameters };
+  merged.routingOptions = { ...merged.routingOptions };
+  return merged;
+}
 
-const SIDE_DIR: Record<Side, number> = { top: DIR.up, bottom: DIR.down, left: DIR.left, right: DIR.right };
-
-// Which side a flow leaves / enters a node for a given flow direction.
+// Which side an edge leaves its source / enters its target for each flow direction.
 const FLOW_SIDES: Record<FlowDirection, { out: Side; in: Side }> = {
   right: { out: 'right', in: 'left' },
   left: { out: 'left', in: 'right' },
@@ -68,212 +118,248 @@ const FLOW_SIDES: Record<FlowDirection, { out: Side; in: Side }> = {
   up: { out: 'top', in: 'bottom' },
 };
 
-const AUTO_PIN_CLASS = 1;
+/** With `ports: 'auto'` every edge attaches to the same four pins of a node. */
+const SHARED_PIN_CLASS = 1;
+const MIN_NUDGING_DISTANCE = 4;
+/** libavoid needs a non-empty rectangle. */
+const MIN_SHAPE_SIZE = 1;
 
-export const defaultRoutingOptions: RoutingOptions = {
-  routingType: 'orthogonal', // 'orthogonal' | 'polyline'
-  ports: 'auto', // 'auto' | 'sankey'
-  flowDirection: 'right', // sankey only: 'right' | 'left' | 'down' | 'up'
-  portSpacing: 2, // sankey only: gap between stacked flows on a node side (px)
-  shapeBufferDistance: 12, // clearance kept around nodes (px)
-  idealNudgingDistance: 'auto', // distance between parallel segments; 'auto' = max edge width + portSpacing
-  nudgeConnectedSegments: 'auto', // spread endpoints sharing a pin; 'auto' = true for ports:'auto'
-  routingParameters: {}, // raw libavoid RoutingParameter values, e.g. { crossingPenalty: 200 }
-  routingOptions: {}, // raw libavoid RoutingOption values, e.g. { nudgeSharedPathsWithCommonEndPoint: true }
-  //                     performUnifyingNudgingPreprocessingStep is off by default (very slow); set true here to re-enable
-};
+/** Routes the edges of a graph model around its nodes with libavoid. */
+export class EdgeRouter {
+  readonly options: RoutingOptions;
+  private readonly avoid: Avoid;
 
-interface Slot {
-  port: SankeyPort;
+  /** @param avoid initialised libavoid instance, see loadLibavoid() */
+  constructor(avoid: Avoid, options: Partial<RoutingOptions> = {}) {
+    this.avoid = avoid;
+    this.options = resolveRoutingOptions(defaultRoutingOptions, options);
+  }
+
+  /**
+   * Edges with a missing endpoint and loops are skipped.
+   *
+   * @returns edge id -> route points, from the source end to the target end
+   */
+  route(model: GraphModel): Map<string, Point[]> {
+    const edges = routableEdges(model);
+    const router = new LibavoidRouter(this.avoid, this.options.routingType);
+    try {
+      this.configure(router, edges);
+      const shapes = this.addShapes(router, model.nodes);
+      const connectors = this.addConnectors(router, shapes, { nodes: model.nodes, edges });
+      router.route();
+      return readRoutes(router, connectors);
+    } finally {
+      router.dispose();
+    }
+  }
+
+  private get usesDockingPorts(): boolean {
+    return this.options.ports === 'docking';
+  }
+
+  private configure(router: LibavoidRouter, edges: GraphEdge[]): void {
+    const { options } = this;
+    const widest = edges.reduce((max, edge) => Math.max(max, edge.width || 0), 0);
+    const nudgingDistance =
+      options.idealNudgingDistance === 'auto'
+        ? Math.max(MIN_NUDGING_DISTANCE, widest + options.portSpacing)
+        : options.idealNudgingDistance;
+    const nudgeConnected =
+      options.nudgeConnectedSegments === 'auto' ? !this.usesDockingPorts : options.nudgeConnectedSegments;
+
+    router.setParameter('shapeBufferDistance', options.shapeBufferDistance);
+    router.setParameter('idealNudgingDistance', nudgingDistance);
+    router.setOption('nudgeOrthogonalSegmentsConnectedToShapes', nudgeConnected);
+    // libavoid's default; costs ~98% of the routing time (64 nodes / 112 edges:
+    // 3.4 s -> 50 ms, docking ports 16 s -> 140 ms) for slightly fewer bends.
+    router.setOption('performUnifyingNudgingPreprocessingStep', false);
+
+    // raw values last, so they override everything above
+    for (const [name, value] of Object.entries(options.routingParameters)) {
+      if (value !== undefined) router.setParameter(name, value);
+    }
+    for (const [name, value] of Object.entries(options.routingOptions)) {
+      if (value !== undefined) router.setOption(name, value);
+    }
+  }
+
+  private addShapes(router: LibavoidRouter, nodes: GraphNode[]): Map<string, ShapeRef> {
+    const shapes = new Map<string, ShapeRef>();
+    for (const node of nodes) {
+      const width = Math.max(node.width, MIN_SHAPE_SIZE);
+      const height = Math.max(node.height, MIN_SHAPE_SIZE);
+      const shape = router.addShape(node, width, height);
+      if (!this.usesDockingPorts) {
+        for (const side of SIDES)
+          router.addPin(shape, { classId: SHARED_PIN_CLASS, side, offset: 0.5, exclusive: false });
+      }
+      shapes.set(node.id, shape);
+    }
+    return shapes;
+  }
+
+  /** `model.edges` must be routable, see routableEdges(). */
+  private addConnectors(
+    router: LibavoidRouter,
+    shapes: Map<string, ShapeRef>,
+    model: GraphModel,
+  ): Map<string, ConnRef> {
+    const ports = this.usesDockingPorts ? computeDockingPorts(model, this.options) : undefined;
+    const connectors = new Map<string, ConnRef>();
+    let nextPinClass = SHARED_PIN_CLASS + 1;
+
+    for (const edge of model.edges) {
+      const source = shapes.get(edge.source)!;
+      const target = shapes.get(edge.target)!;
+      const edgePorts = ports?.get(edge.id);
+      if (!edgePorts) {
+        connectors.set(edge.id, router.connect(source, SHARED_PIN_CLASS, target, SHARED_PIN_CLASS));
+        continue;
+      }
+      // a docking port is a pin class of its own with exactly one pin
+      const sourcePin = nextPinClass++;
+      const targetPin = nextPinClass++;
+      router.addPin(source, { classId: sourcePin, ...edgePorts.source, exclusive: true });
+      router.addPin(target, { classId: targetPin, ...edgePorts.target, exclusive: true });
+      connectors.set(edge.id, router.connect(source, sourcePin, target, targetPin));
+    }
+    return connectors;
+  }
+}
+
+/** Edges whose endpoints both exist and differ. */
+function routableEdges(model: GraphModel): GraphEdge[] {
+  const nodeIds = new Set(model.nodes.map((node) => node.id));
+  return model.edges.filter(
+    (edge) => edge.source !== edge.target && nodeIds.has(edge.source) && nodeIds.has(edge.target),
+  );
+}
+
+function readRoutes(router: LibavoidRouter, connectors: Map<string, ConnRef>): Map<string, Point[]> {
+  const routes = new Map<string, Point[]>();
+  for (const [edgeId, connector] of connectors) routes.set(edgeId, simplify(router.pointsOf(connector)));
+  return routes;
+}
+
+// --- docking ports -------------------------------------------------------------
+
+/** One edge end waiting for its place on a node side. */
+interface PortSlot {
+  port: DockingPort;
   edge: GraphEdge;
-  sortKey: number;
-  tie: string;
+  /** Id and cross-flow position of the node at the other end of the edge; slots are sorted by them. */
+  otherNodeId: string;
+  otherNodePosition: number;
 }
 
 /**
- * Computes sankey-style port positions: every edge gets its own slot on the
- * outgoing side of its source and the incoming side of its target. Slots are
- * stacked by edge width and sorted by the position of the opposite node so
- * flows do not cross right at the node. Edges with unknown endpoints are skipped.
+ * Places a docking port for both ends of every edge: on the outgoing side of
+ * the source and the incoming side of the target. The ports on a side are
+ * stacked by edge width and sorted by the position of the node at the other
+ * end, so edges do not cross right at the node. Edges with a missing endpoint
+ * are skipped.
  *
  * @returns edge id -> source / target port
  */
-export function computeSankeyPorts(model: GraphModel, opts: Partial<RoutingOptions>): Map<string, SankeyPorts> {
-  const { flowDirection = 'right', portSpacing = 2 } = opts;
+export function computeDockingPorts(model: GraphModel, options: Partial<RoutingOptions> = {}): Map<string, EdgePorts> {
+  const { flowDirection = defaultRoutingOptions.flowDirection, portSpacing = defaultRoutingOptions.portSpacing } =
+    options;
   const sides: { out: Side; in: Side } | undefined = FLOW_SIDES[flowDirection];
   if (!sides) throw new Error(`cytoscape-libavoid: unknown flowDirection "${flowDirection}"`);
-  const horizontal = flowDirection === 'right' || flowDirection === 'left';
-  const cross = horizontal ? 'y' : 'x';
-  const nodes = new Map(model.nodes.map((n) => [n.id, n]));
+  const across = flowDirection === 'right' || flowDirection === 'left' ? 'y' : 'x';
 
-  const slots = new Map<string, Partial<Record<Side, Slot[]>>>();
-  const ports = new Map<string, SankeyPorts>();
-  const push = (nodeId: string, side: Side, entry: Slot): void => {
-    let bySide = slots.get(nodeId);
-    if (!bySide) slots.set(nodeId, (bySide = {}));
-    (bySide[side] ||= []).push(entry);
+  const nodes = new Map(model.nodes.map((node) => [node.id, node]));
+  const slotsByNode = new Map<GraphNode, Partial<Record<Side, PortSlot[]>>>();
+  const addSlot = (node: GraphNode, slot: PortSlot): void => {
+    let bySide = slotsByNode.get(node);
+    if (!bySide) slotsByNode.set(node, (bySide = {}));
+    (bySide[slot.port.side] ??= []).push(slot);
   };
 
-  for (const e of model.edges) {
-    const src = nodes.get(e.source);
-    const tgt = nodes.get(e.target);
-    if (!src || !tgt) continue;
-    // offsets are filled in below; every port lands in exactly one slot list
-    const p: SankeyPorts = { source: { side: e.sourceSide || sides.out, offset: 0.5 }, target: { side: e.targetSide || sides.in, offset: 0.5 } };
-    ports.set(e.id, p);
-    push(e.source, p.source.side, { port: p.source, edge: e, sortKey: tgt[cross], tie: e.target });
-    push(e.target, p.target.side, { port: p.target, edge: e, sortKey: src[cross], tie: e.source });
+  const ports = new Map<string, EdgePorts>();
+  for (const edge of model.edges) {
+    const source = nodes.get(edge.source);
+    const target = nodes.get(edge.target);
+    if (!source || !target) continue;
+    // the offsets are placeholders until the ports of each side are spread out below
+    const edgePorts: EdgePorts = {
+      source: { side: edge.sourceSide ?? sides.out, offset: 0.5 },
+      target: { side: edge.targetSide ?? sides.in, offset: 0.5 },
+    };
+    ports.set(edge.id, edgePorts);
+    addSlot(source, { port: edgePorts.source, edge, otherNodeId: target.id, otherNodePosition: target[across] });
+    addSlot(target, { port: edgePorts.target, edge, otherNodeId: source.id, otherNodePosition: source[across] });
   }
 
-  for (const [nodeId, bySide] of slots) {
-    const node = nodes.get(nodeId);
-    if (!node) continue;
+  for (const [node, bySide] of slotsByNode) {
     for (const side of SIDES) {
-      const list = bySide[side];
-      if (!list) continue;
-      list.sort((a, b) => a.sortKey - b.sortKey || a.tie.localeCompare(b.tie) || a.edge.id.localeCompare(b.edge.id));
-      const along = side === 'left' || side === 'right' ? node.h : node.w;
-      const total = list.reduce((s, it) => s + (it.edge.width || 0), 0) + portSpacing * (list.length - 1);
-      // squeeze the stack if it does not fit onto the side
-      const scale = total > along && total > 0 ? along / total : 1;
-      let cursor = (along - total * scale) / 2;
-      for (const it of list) {
-        const w = (it.edge.width || 0) * scale;
-        const center = cursor + w / 2;
-        cursor += w + portSpacing * scale;
-        it.port.offset = along > 0 ? clamp(center / along, 0, 1) : 0.5;
-      }
+      const slots = bySide[side];
+      if (!slots) continue;
+      slots.sort(compareSlots);
+      const sideLength = side === 'left' || side === 'right' ? node.height : node.width;
+      const widths = slots.map((slot) => slot.edge.width || 0);
+      const offsets = spreadPorts(widths, sideLength, portSpacing);
+      slots.forEach((slot, i) => (slot.port.offset = offsets[i]));
     }
   }
   return ports;
 }
 
+const compareSlots = (a: PortSlot, b: PortSlot): number =>
+  a.otherNodePosition - b.otherNodePosition ||
+  a.otherNodeId.localeCompare(b.otherNodeId) ||
+  a.edge.id.localeCompare(b.edge.id);
+
 /**
- * Routes all edges of the model with libavoid.
+ * Stacks ports of the given widths along a side, centred and `spacing` apart,
+ * and squeezes the stack if it does not fit.
  *
- * @param Avoid   initialised libavoid-js instance (AvoidLib.getInstance())
- * @param model   edges whose endpoints are missing or that are loops are skipped.
- * @param options see defaultRoutingOptions
- * @returns edge id -> route points (first = source end, last = target end)
+ * @returns the centre of each port as a fraction (0..1) of the side length
  */
-export function routeGraph(Avoid: Avoid, model: GraphModel, options: Partial<RoutingOptions> = {}): Map<string, Point[]> {
-  const opts: RoutingOptions = { ...defaultRoutingOptions, ...options };
-  const nodeIds = new Set(model.nodes.map((n) => n.id));
-  const edges = model.edges.filter((e) => e.source !== e.target && nodeIds.has(e.source) && nodeIds.has(e.target));
-  const sankey = opts.ports === 'sankey';
-  const maxWidth = edges.reduce((m, e) => Math.max(m, e.width || 0), 0);
-  const nudging = opts.idealNudgingDistance === 'auto' ? Math.max(4, maxWidth + opts.portSpacing) : opts.idealNudgingDistance;
-  const nudgeConnected = opts.nudgeConnectedSegments === 'auto' ? !sankey : opts.nudgeConnectedSegments;
-
-  const flag = opts.routingType === 'polyline' ? Avoid.RouterFlag.PolyLineRouting : Avoid.RouterFlag.OrthogonalRouting;
-  const router = new Avoid.Router(flag.value);
-  const temps: Deletable[] = [];
-  const tmp = <T extends Deletable>(obj: T): T => (temps.push(obj), obj);
-  const P = (x: number, y: number) => tmp(new Avoid.Point(x, y));
-
-  try {
-    setParam(Avoid, router, 'shapeBufferDistance', opts.shapeBufferDistance);
-    setParam(Avoid, router, 'idealNudgingDistance', nudging);
-    setOption(Avoid, router, 'nudgeOrthogonalSegmentsConnectedToShapes', nudgeConnected);
-    // libavoid's default; costs ~98% of the routing time (64 nodes / 112 edges:
-    // 3.4 s -> 50 ms, sankey 16 s -> 140 ms) for slightly fewer bends.
-    setOption(Avoid, router, 'performUnifyingNudgingPreprocessingStep', false);
-    for (const [k, v] of Object.entries(opts.routingParameters || {})) if (v !== undefined) setParam(Avoid, router, k, v);
-    for (const [k, v] of Object.entries(opts.routingOptions || {})) if (v !== undefined) setOption(Avoid, router, k, v);
-
-    const shapes = new Map<string, ShapeRef>();
-    for (const n of model.nodes) {
-      const rect = tmp(new Avoid.Rectangle(P(n.x, n.y), Math.max(n.w, 1), Math.max(n.h, 1)));
-      const shape = new Avoid.ShapeRef(router, rect);
-      shapes.set(n.id, shape);
-      if (!sankey) {
-        // one pin per side, shared by all connectors; libavoid picks the best side
-        addPin(Avoid, shape, AUTO_PIN_CLASS, 'top', 0.5, false);
-        addPin(Avoid, shape, AUTO_PIN_CLASS, 'right', 0.5, false);
-        addPin(Avoid, shape, AUTO_PIN_CLASS, 'bottom', 0.5, false);
-        addPin(Avoid, shape, AUTO_PIN_CLASS, 'left', 0.5, false);
-      }
-    }
-
-    const ports = sankey ? computeSankeyPorts({ nodes: model.nodes, edges }, opts) : null;
-    let nextClass = AUTO_PIN_CLASS + 1;
-    const conns: Array<[string, ConnRef]> = [];
-    for (const e of edges) {
-      const srcShape = shapes.get(e.source);
-      const tgtShape = shapes.get(e.target);
-      if (!srcShape || !tgtShape) continue; // cannot happen: edges are filtered above
-      let srcClass = AUTO_PIN_CLASS;
-      let tgtClass = AUTO_PIN_CLASS;
-      const p = ports?.get(e.id);
-      if (p) {
-        srcClass = nextClass++;
-        tgtClass = nextClass++;
-        addPin(Avoid, srcShape, srcClass, p.source.side, p.source.offset, true);
-        addPin(Avoid, tgtShape, tgtClass, p.target.side, p.target.offset, true);
-      }
-      const conn = new Avoid.ConnRef(router, tmp(new Avoid.ConnEnd(srcShape, srcClass)), tmp(new Avoid.ConnEnd(tgtShape, tgtClass)));
-      conns.push([e.id, conn]);
-    }
-
-    router.processTransaction();
-
-    const routes = new Map<string, Point[]>();
-    for (const [id, conn] of conns) {
-      const route = conn.displayRoute();
-      const pts: Point[] = [];
-      for (let i = 0; i < route.size(); i++) {
-        const p = route.at(i);
-        pts.push({ x: p.x, y: p.y });
-      }
-      routes.set(id, simplify(pts));
-    }
-    return routes;
-  } finally {
-    for (const t of temps) t.delete();
-    router.delete(); // frees shapes, pins and connectors owned by the router
-  }
+export function spreadPorts(widths: readonly number[], sideLength: number, spacing: number): number[] {
+  if (!(sideLength > 0)) return widths.map(() => 0.5);
+  const needed = widths.reduce((sum, width) => sum + width, 0) + spacing * (widths.length - 1);
+  const scale = needed > sideLength ? sideLength / needed : 1;
+  let cursor = (sideLength - needed * scale) / 2;
+  return widths.map((width) => {
+    const scaled = width * scale;
+    const centre = cursor + scaled / 2;
+    cursor += scaled + spacing * scale;
+    return clamp(centre / sideLength, 0, 1);
+  });
 }
 
-function addPin(Avoid: Avoid, shape: ShapeRef, classId: number, side: Side, offset: number, exclusive: boolean): void {
-  const x = side === 'left' ? 0 : side === 'right' ? 1 : offset;
-  const y = side === 'top' ? 0 : side === 'bottom' ? 1 : offset;
-  const pin = new Avoid.ShapeConnectionPin(shape, classId, x, y, true, 0, SIDE_DIR[side]);
-  pin.setExclusive(exclusive);
-}
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
-function setParam(Avoid: Avoid, router: Router, name: string, value: number): void {
-  const p = Avoid.RoutingParameter[name];
-  if (!p) throw new Error(`cytoscape-libavoid: unknown routing parameter "${name}"`);
-  router.setRoutingParameter(p, value);
-}
+// --- route clean-up ------------------------------------------------------------
 
-function setOption(Avoid: Avoid, router: Router, name: string, value: boolean): void {
-  const o = Avoid.RoutingOption[name];
-  if (!o) throw new Error(`cytoscape-libavoid: unknown routing option "${name}"`);
-  router.setRoutingOption(o, value);
-}
+/** libavoid returns float noise such as 12.000000001; coordinates are rounded to 1/1000 px. */
+const COORDINATE_PRECISION = 1000;
+const COLLINEAR_TOLERANCE = 1e-6;
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+const roundCoordinate = (value: number): number => Math.round(value * COORDINATE_PRECISION) / COORDINATE_PRECISION;
 
-/** Rounds away float noise from libavoid and drops duplicate / collinear points. */
+/** Rounds away float noise and drops duplicate points and points in the middle of a straight run. */
 export function simplify(points: readonly Point[]): Point[] {
-  const pts = points.map((p) => ({ x: round(p.x), y: round(p.y) }));
-  const out: Point[] = [];
-  for (const p of pts) {
-    const last = out[out.length - 1];
-    if (last && last.x === p.x && last.y === p.y) continue;
-    if (last && out.length >= 2) {
-      const a = out[out.length - 2];
-      const cross = (last.x - a.x) * (p.y - a.y) - (last.y - a.y) * (p.x - a.x);
-      const sameDir = (last.x - a.x) * (p.x - last.x) + (last.y - a.y) * (p.y - last.y) >= 0;
-      if (Math.abs(cross) < 1e-6 && sameDir) {
-        out[out.length - 1] = p;
-        continue;
-      }
+  const result: Point[] = [];
+  for (const { x, y } of points) {
+    const point = { x: roundCoordinate(x), y: roundCoordinate(y) };
+    const last = result[result.length - 1];
+    if (last && last.x === point.x && last.y === point.y) continue;
+    const beforeLast = result[result.length - 2];
+    if (last && beforeLast && continuesStraight(beforeLast, last, point)) {
+      result[result.length - 1] = point;
+      continue;
     }
-    out.push(p);
+    result.push(point);
   }
-  return out;
+  return result;
 }
 
-const round = (v: number): number => Math.round(v * 1000) / 1000;
+/** True if b lies on the straight line from a to c and the path does not turn back at b. */
+function continuesStraight(a: Point, b: Point, c: Point): boolean {
+  const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const sameDirection = (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y) >= 0;
+  return Math.abs(cross) < COLLINEAR_TOLERANCE && sameDirection;
+}

@@ -46,3 +46,6 @@ Thumbs.db
 # benchmark
 /vendor
 /results
+
+# copied from ../../src by npm run lib
+/src/app/cytoscape-libavoid

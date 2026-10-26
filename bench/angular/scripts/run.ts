@@ -18,7 +18,7 @@ import { parseArgs } from 'node:util';
 interface MatrixRun {
   name: string;
   plugins: string[];
-  ports?: 'auto' | 'sankey';
+  ports?: 'auto' | 'docking';
   rerouteOnDrag?: boolean;
 }
 
@@ -61,7 +61,7 @@ const throttle = Number(args.throttle) || 1;
 
 if (!args['no-build']) {
   console.log('building…');
-  const b = spawnSync('npx ng build', { cwd: root, stdio: 'inherit', shell: true });
+  const b = spawnSync('npm run build', { cwd: root, stdio: 'inherit', shell: true });
   if (b.status !== 0) process.exit(b.status ?? 1);
 }
 
@@ -165,7 +165,7 @@ for (const run of runs) {
       size: matrix.size,
       zone,
       plugins: run.plugins.join(','),
-      ports: run.ports ?? 'sankey',
+      ports: run.ports ?? 'docking',
       drag: run.rerouteOnDrag === false ? '0' : '1',
     });
     pageErrors.length = 0;

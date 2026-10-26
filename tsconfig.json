@@ -1,25 +1,25 @@
 {
-  // Type-checks everything (`npm run typecheck`). Sources import each other with
-  // .ts extensions so Node can run tests and scripts directly via type stripping.
+  // Type-checks everything (`npm run typecheck`) with the settings of a typical
+  // app that copies src/: bundler resolution, extensionless imports.
+  // Node runs the tests and scripts via type stripping plus scripts/ts-resolve.ts.
   "compilerOptions": {
     "target": "es2022",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "lib": ["es2022", "dom"],
     "types": ["node"],
     "strict": true,
     "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
+    // libavoid-js ships broken .d.ts files
     "skipLibCheck": true,
-    "noEmit": true,
-    // libavoid-js ships incomplete typings that fall back to `any`
-    "paths": { "libavoid-js": ["./types/libavoid-js.d.ts"] }
+    "noEmit": true
   },
-  "include": ["src", "test", "bench", "scripts", "types"],
+  "include": ["src", "test", "bench", "scripts", "demo"],
   // separate Angular project with its own tsconfig
-  "exclude": ["bench/angular"]
+  "exclude": ["bench/angular", "demo/build"]
 }

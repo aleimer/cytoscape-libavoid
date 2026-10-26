@@ -1,6 +1,6 @@
 import cytoscape from 'cytoscape';
 import type { Core, StylesheetJson } from 'cytoscape';
-import cytoscapeLibavoid from 'cytoscape-libavoid';
+import cytoscapeLibavoid from './cytoscape-libavoid';
 import gridGuide from 'cytoscape-grid-guide';
 import expandCollapse from 'cytoscape-expand-collapse';
 import nodeHtmlLabel from 'cytoscape-node-html-label';

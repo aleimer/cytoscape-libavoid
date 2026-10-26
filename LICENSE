@@ -20,7 +20,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-This license applies to the cytoscape-libavoid source code (src/, scripts/,
-test/, demo/index.html, docs/). Third-party components included in dist/ and
-demo/vendor/ keep their own licenses, see THIRD-PARTY-NOTICES.md. In
-particular, libavoid and libavoid-js are licensed under LGPL-2.1-or-later.
+This license applies to the cytoscape-libavoid source code (src/,
+scripts/, test/, bench/, demo/, docs/). Third-party components bundled into
+builds that use it (e.g. demo/build/) keep their own licenses, see
+THIRD-PARTY-NOTICES.md. In particular, libavoid and libavoid-js are licensed
+under LGPL-2.1-or-later.

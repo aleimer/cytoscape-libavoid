@@ -52,7 +52,7 @@
               },
               {
                 "glob": "libavoid.wasm",
-                "input": "node_modules/cytoscape-libavoid/dist",
+                "input": "node_modules/libavoid-js/dist",
                 "output": "/"
               }
             ],

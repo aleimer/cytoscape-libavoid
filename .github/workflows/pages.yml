@@ -27,12 +27,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm run build:demo
       - name: Assemble site
         run: |
-          mkdir -p _site/node_modules/cytoscape/dist
-          cp -r demo dist _site/
-          cp node_modules/cytoscape/dist/cytoscape.min.js _site/node_modules/cytoscape/dist/
+          mkdir -p _site
+          cp -r demo _site/
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=demo/"><a href="demo/">Demo</a>\n' > _site/index.html
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5

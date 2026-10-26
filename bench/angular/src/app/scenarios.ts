@@ -1,5 +1,5 @@
 import type { Core, NodeSingular } from 'cytoscape';
-import type { RoutedEventInfo } from 'cytoscape-libavoid';
+import type { RoutedEventInfo } from './cytoscape-libavoid';
 import { rng, series } from './graph';
 
 // Scenarios simulate what a user does with the graph and record frame timing,

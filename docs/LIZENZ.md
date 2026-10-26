@@ -1,6 +1,6 @@
 # cytoscape-libavoid – Lizenzrechtliche Hinweise
 
-Stand: 16.10.2026 · gilt für cytoscape-libavoid 0.1.0 mit libavoid-js 0.5.0-beta.5
+Stand: 26.10.2026 · gilt für cytoscape-libavoid 0.1.0 (TypeScript-Quellen in `src/`) mit libavoid-js 0.5.0-beta.5
 
 > **Keine Rechtsberatung.** Dieses Dokument fasst die Lizenzlage aus
 > technischer Sicht zusammen und zeigt, was im Projekt zu beachten ist. Vor
@@ -34,14 +34,17 @@ Stand: 16.10.2026 · gilt für cytoscape-libavoid 0.1.0 mit libavoid-js 0.5.0-be
 
 ## 2. Welche Komponenten stecken drin?
 
-| Komponente | Lizenz | Rechteinhaber | Wo im Paket |
+| Komponente | Lizenz | Rechteinhaber | Wo |
 |---|---|---|---|
-| **cytoscape-libavoid** (eigener Code) | MIT | Philipp Kabala | `src/`, Teil von `dist/*.js` |
-| **libavoid-js** 0.5.0-beta.5 (JS-Bindings, Build) | LGPL-2.1-or-later | Vladyslav Hnatiuk und Mitwirkende | gebündelt in `dist/*.js`, `dist/libavoid.wasm` |
-| **libavoid** (C++, aus Adaptagrams) | LGPL-2.1-or-later, zusätzlich kommerziell lizenzierbar | Monash University | kompiliert in `dist/libavoid.wasm` |
-| **Emscripten-Laufzeit** (Teil des libavoid-js-Codes) | MIT / NCSA | Emscripten-Autoren | in `dist/*.js` |
-| **Cytoscape.js** | MIT | The Cytoscape Consortium | nur `demo/vendor/cytoscape.min.js`. Das Plugin bündelt Cytoscape nicht, es ist eine Peer-Dependency. |
+| **cytoscape-libavoid** (eigener Code) | MIT | Philipp Kabala | `src/`, wird in die Anwendung kompiliert |
+| **libavoid-js** 0.5.0-beta.5 (JS-Bindings, Build) | LGPL-2.1-or-later | Vladyslav Hnatiuk und Mitwirkende | npm-Abhängigkeit, wird vom Bundler der Anwendung mitgebündelt; `libavoid.wasm` als eigene Datei |
+| **libavoid** (C++, aus Adaptagrams) | LGPL-2.1-or-later, zusätzlich kommerziell lizenzierbar | Monash University | kompiliert in `libavoid.wasm` |
+| **Emscripten-Laufzeit** (Teil des libavoid-js-Codes) | MIT / NCSA | Emscripten-Autoren | im JS-Code von libavoid-js |
+| **Cytoscape.js** | MIT | The Cytoscape Consortium | npm-Abhängigkeit der Anwendung; im Repo nur im Demo-Build (`demo/build/`) |
 | **esbuild** | MIT | Evan Wallace | nur Build-Werkzeug, wird nicht ausgeliefert |
+
+Das Repository selbst enthält keinen Code von libavoid oder libavoid-js. Er
+kommt erst beim Bauen einer Anwendung (oder der Demo) aus `node_modules` hinzu.
 
 Belege:
 - libavoid-js: `"license": "LGPL-2.1-or-later"` in der `package.json`, Lizenztext
@@ -110,8 +113,8 @@ nicht.
 | Nutzung nur im eigenen Unternehmen (Intranet, eigene Mitarbeiter) | nein (strittig bei Weitergabe an Konzerngesellschaften) | keine. Hinweise trotzdem sinnvoll. |
 | Routing nur serverseitig in Node.js, Kunden sehen nur das Ergebnis (z. B. ein SVG) | nein | keine. Die LGPL-2.1 hat keine Netzwerk-Klausel wie die AGPL. |
 | **Öffentliche oder Kunden-Webanwendung**, Browser lädt das Plugin | **ja** | **alle aus Abschnitt 3** |
-| ZIP oder `dist/` an Kunden oder Partner geben | **ja** | **alle aus Abschnitt 3** |
-| Veröffentlichung als npm-Paket | **ja** | alle. Ohne gebündelte `dist/`-Dateien (nur `src/`, libavoid-js als Abhängigkeit) wird die Bibliothek aber nicht von Ihnen selbst ausgeliefert, das vereinfacht die Lage deutlich (siehe 6.2). |
+| Gebaute Anwendung (Bundle + `libavoid.wasm`) an Kunden oder Partner geben | **ja** | **alle aus Abschnitt 3** |
+| Nur die Plugin-Quellen (`src/`) weitergeben | nein, sie enthalten keinen LGPL-Code | keine für libavoid; libavoid-js kommt beim Empfänger von npm (siehe 6.2) |
 | Desktop-App (z. B. Electron) mit dem Plugin | **ja** | alle |
 | Änderungen am libavoid-C++-Code oder an libavoid-js | – | zusätzlich: Änderungen unter LGPL im Quellcode bereitstellen |
 
@@ -125,10 +128,9 @@ nicht.
 |---|---|
 | Lizenztext beilegen | `licenses/LGPL-2.1.txt` (Original aus libavoid-js) |
 | Hinweis auf verwendete Bibliotheken | `THIRD-PARTY-NOTICES.md` mit Komponenten, Versionen, Rechteinhabern, Lizenzen und Quellen |
-| Hinweis in den Bundles | Die Dateien in `dist/*.js` beginnen mit einem `/*! … */`-Kommentar, der libavoid-js und libavoid mit Lizenz nennt. Vorher enthielten die Bundles **keinen** Lizenzhinweis. Das `!` sorgt dafür, dass gängige Minifier den Kommentar stehen lassen. |
-| Cytoscape (MIT) in der Demo | Der Lizenzkopf steht in `cytoscape.min.js`, zusätzlich liegt `licenses/cytoscape-MIT.txt` bei. |
-| Austauschbarkeit (§ 6 a) | Plugin-Quellcode (`src/`) und Build-Skript liegen bei. Mit einem eigenen libavoid-js lässt sich alles neu bauen. `libavoid.wasm` wird als eigene Datei geladen. |
-| Paketinhalt | `package.json` → `files` enthält `licenses/` und `THIRD-PARTY-NOTICES.md`. |
+| Hinweis im Bundle | `libavoid.ts` beginnt mit einem `/*! … */`-Kommentar, der libavoid-js und libavoid mit Lizenz nennt. Das `!` sorgt dafür, dass esbuild und gängige Minifier den Kommentar in das Bundle übernehmen (geprüft am Demo-Build). Angular entfernt Lizenzkommentare aus dem Bundle und schreibt stattdessen `3rdpartylicenses.txt`, das libavoid-js mit vollem LGPL-Text enthält (geprüft am Bench-Build). |
+| Cytoscape (MIT) in der Demo | Der Lizenzkopf von Cytoscape bleibt im Demo-Bundle erhalten, zusätzlich liegt `licenses/cytoscape-MIT.txt` bei. |
+| Austauschbarkeit (§ 6 a) | Plugin-Quellcode liegt bei, libavoid-js ist eine normale npm-Abhängigkeit. Mit einem eigenen libavoid-js lässt sich die Anwendung neu bauen. `libavoid.wasm` wird als eigene Datei geladen. |
 
 ### 5.2 Erledigt: Lizenz für den eigenen Plugin-Code
 
@@ -136,7 +138,7 @@ Der eigene Code steht unter der **MIT-Lizenz** (`LICENSE`, `"license": "MIT"`
 in `package.json`). MIT ist im Cytoscape-Umfeld üblich und mit der LGPL von
 libavoid vereinbar: Der Plugin-Code ist ein „Werk, das die Bibliothek nutzt“
 und darf eigenständig lizenziert sein. Die `LICENSE`-Datei stellt klar, dass
-die Fremdkomponenten in `dist/` und `demo/vendor/` ihre eigenen Lizenzen
+mitgebündelte Fremdkomponenten (z. B. im Demo-Build) ihre eigenen Lizenzen
 behalten.
 
 ### 5.3 Offen: Quellcode der Bibliothek bereitstellen
@@ -177,33 +179,33 @@ verlinkt.
 
 ## 6. Technische Stellschrauben
 
-### 6.1 libavoid-js nicht ins Bundle packen
+### 6.1 libavoid-js im Bundle der Anwendung
 
-Derzeit ist der JavaScript-Teil von libavoid-js **in** `dist/*.js`
-eingebündelt, nur die `.wasm` liegt separat. Der JS-Teil und die `.wasm`
+Der Bundler der Anwendung packt den JavaScript-Teil von libavoid-js in das
+Anwendungs-Bundle, nur die `.wasm` liegt separat. Der JS-Teil und die `.wasm`
 werden gemeinsam generiert und gehören zusammen. Wer die Bibliothek
-austauschen will, muss also das Bundle neu bauen. Das ist nach § 6 a zulässig,
-weil Quellcode und Build-Skript beiliegen.
+austauschen will, muss also die Anwendung neu bauen. Das ist nach § 6 a
+zulässig, wenn der Empfänger dafür Quellcode bzw. neu verlinkbare Objektdateien
+und das Build-Verfahren der Anwendung erhält.
 
 Sauberer im Sinne von § 6 b wäre, libavoid-js als **eigene Datei**
-auszuliefern, die zur Laufzeit geladen wird. Dann lässt sich die Bibliothek
-einfach durch Austausch zweier Dateien ersetzen, ohne etwas neu zu bauen. Das
-lässt sich im Build-Skript umsetzen (libavoid-js als `external`, eigene Datei
-in `dist/`).
+auszuliefern, die zur Laufzeit geladen wird (im Bundler als `external`
+markieren und separat einbinden). Dann lässt sich die Bibliothek einfach durch
+Austausch zweier Dateien ersetzen, ohne etwas neu zu bauen.
 
-### 6.2 npm-Paket ohne gebündelte Bibliothek
+### 6.2 Plugin-Quellen ohne Bibliothek
 
-Wird das Plugin auf npm veröffentlicht, holt der Nutzer libavoid-js über
-`dependencies` direkt vom Original. Das Plugin enthält dann keinen
-LGPL-Code, und die Pflichten aus § 6 liegen bei dem, der am Ende die fertige
-Anwendung ausliefert. Die `dist/`-Bundles würden dann nur für die Nutzung
-über `<script>`-Tags dienen und sollten Hinweis und Lizenz weiter enthalten.
+Die Plugin-Quellen in `src/` enthalten keinen LGPL-Code; libavoid-js
+kommt über `npm install libavoid-js` direkt vom Original. Die Pflichten aus
+§ 6 liegen damit bei dem, der am Ende die fertige Anwendung ausliefert.
 
-### 6.3 Minifizierung in fremden Builds
+### 6.3 Pflichten des Anwendungsbetreibers
 
-Wer das Plugin über einen eigenen Bundler einbindet, bündelt libavoid-js
-selbst mit. Dann trägt der Betreiber dieser Anwendung die Pflichten aus
-Abschnitt 3. In der Entwicklerdokumentation sollte darauf hingewiesen werden.
+Wer das Plugin in eine Anwendung einbaut, bündelt libavoid-js selbst mit und
+trägt die Pflichten aus Abschnitt 3. Im eigenen Produktions-Build prüfen, dass
+der `/*! … */`-Hinweis erhalten bleibt (bei esbuild Standard, bei Terser
+o. Ä. ggf. `comments: /^!/` setzen). Angular liefert stattdessen
+`3rdpartylicenses.txt` mit aus; diese Datei muss mit veröffentlicht werden.
 
 ---
 
@@ -230,8 +232,8 @@ Zu beachten:
 ## 8. Checkliste vor einer Weitergabe
 
 - [x] Lizenz für den eigenen Plugin-Code festgelegt: MIT, `package.json` und `LICENSE` angepasst (5.2)
-- [ ] `licenses/LGPL-2.1.txt` und `THIRD-PARTY-NOTICES.md` werden mitgeliefert ✔ (im Paket enthalten)
-- [ ] Lizenzhinweis in `dist/*.js` bleibt auch im Produktions-Build erhalten ✔ (Banner gesetzt, im eigenen Build prüfen)
+- [ ] `licenses/LGPL-2.1.txt` und `THIRD-PARTY-NOTICES.md` werden mit der Anwendung mitgeliefert
+- [ ] Lizenzhinweis aus `libavoid.ts` bleibt im Produktions-Build der Anwendung erhalten (6.3)
 - [ ] Quellarchiv von libavoid-js (exakter Stand) und Adaptagrams-Fork bereitgestellt (5.3)
 - [ ] Sichtbarer Hinweis in der Anwendung („Open-Source-Lizenzen") (5.4)
 - [ ] Eigene EULA / AGB verbieten keine Änderungen für den Eigengebrauch und kein Reverse Engineering zur Fehlersuche (Abschnitt 3)

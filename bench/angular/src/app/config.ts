@@ -1,5 +1,5 @@
 // Bench configuration, read from the URL so every run starts from a fresh page:
-//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=sankey&drag=1
+//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=docking&drag=1
 
 export type ZoneMode = 'zoneless' | 'zone' | 'zone-outside';
 export type PluginName = 'libavoid' | 'gridGuide' | 'expandCollapse' | 'htmlLabel';
@@ -10,7 +10,7 @@ export interface BenchConfig {
   /** zoneless; zone = cytoscape created inside the Angular zone (typical); zone-outside = runOutsideAngular */
   zone: ZoneMode;
   plugins: PluginName[];
-  ports: 'auto' | 'sankey';
+  ports: 'auto' | 'docking';
   rerouteOnDrag: boolean;
   cornerRadius: number;
 }
@@ -19,7 +19,7 @@ export const DEFAULT_CONFIG: BenchConfig = {
   size: 'M',
   zone: 'zone',
   plugins: [...PLUGIN_NAMES],
-  ports: 'sankey',
+  ports: 'docking',
   rerouteOnDrag: true,
   cornerRadius: 6,
 };
@@ -37,7 +37,7 @@ export function readConfig(search = location.search): BenchConfig {
     size: pick('size', ['S', 'M', 'L'], DEFAULT_CONFIG.size),
     zone: pick('zone', ['zoneless', 'zone', 'zone-outside'], DEFAULT_CONFIG.zone),
     plugins,
-    ports: pick('ports', ['auto', 'sankey'], DEFAULT_CONFIG.ports),
+    ports: pick('ports', ['auto', 'docking'], DEFAULT_CONFIG.ports),
     rerouteOnDrag: q.has('drag') ? q.get('drag') !== '0' : DEFAULT_CONFIG.rerouteOnDrag,
     cornerRadius: q.has('radius') ? Number(q.get('radius')) || 0 : DEFAULT_CONFIG.cornerRadius,
   };

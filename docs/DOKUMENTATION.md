@@ -5,9 +5,9 @@ Version 0.1.0 · für Cytoscape.js ≥ 3.2 · libavoid-js 0.5.0-beta.5
 `cytoscape-libavoid` ist eine Cytoscape.js-Erweiterung, die Kanten mit
 [libavoid](https://www.adaptagrams.org/documentation/libavoid.html) routet,
 einer C++-Bibliothek für hindernisvermeidendes Kantenrouting. Sie läuft als
-WebAssembly im Browser und in Node.js. Das Plugin ist für
-Materialfluss- und Sankey-Diagramme gedacht: Pfeile im Taxi-Stil, die um Knoten
-herumführen und deren Breite eine Menge darstellt.
+WebAssembly im Browser und in Node.js. Typischer Einsatz sind Materialfluss-
+und Prozessdiagramme: Pfeile im Taxi-Stil, die um Knoten herumführen und an
+eigenen Andockpunkten (Docking Ports) an den Knoten ansetzen.
 
 ---
 
@@ -40,10 +40,10 @@ herumführen und deren Breite eine Menge darstellt.
 - **Zwei Port-Modi:**
   - `auto`: Jeder Knoten hat einen Anschlusspunkt pro Seite, libavoid wählt
     die günstigste Seite.
-  - `sankey`: Jede Kante bekommt einen eigenen Anschluss an der Ausgangsseite
-    der Quelle und der Eingangsseite des Ziels. Die Anschlüsse werden nach
-    Kantenbreite gestapelt und nach der Lage des Gegenknotens sortiert, damit
-    sich Flüsse direkt am Knoten nicht kreuzen.
+  - `docking`: Jede Kante bekommt einen eigenen Andockpunkt (Docking Port) an
+    der Ausgangsseite der Quelle und der Eingangsseite des Ziels. Die Ports
+    werden nach Kantenbreite gestapelt und nach der Lage des Gegenknotens
+    sortiert, damit sich Kanten direkt am Knoten nicht kreuzen.
 - **Nudging:** Parallel laufende Segmente werden auseinandergeschoben, der
   Abstand richtet sich automatisch nach der breitesten Kante.
 - **Abgerundete Ecken**, optional.
@@ -53,38 +53,36 @@ herumführen und deren Breite eine Menge darstellt.
 - **Nicht-invasiv:** Die Routen werden als Style-Bypass gesetzt. Farbe, Pfeile,
   Opazität usw. aus dem Stylesheet bleiben erhalten. `destroy()` stellt den
   Ausgangszustand wieder her.
-- **Routing-Kern ohne Cytoscape:** `routeGraph()` arbeitet auf einem einfachen
-  Datenmodell und lässt sich mit anderen Renderern oder serverseitig nutzen.
+- **Routing ohne Cytoscape:** Die Klasse `EdgeRouter` arbeitet auf einem
+  einfachen Datenmodell und lässt sich mit anderen Renderern oder serverseitig
+  nutzen.
 
 ## 2. Paketinhalt
 
 ```
 cytoscape-libavoid/
-├── dist/
-│   ├── cytoscape-libavoid.esm.js    ES-Modul-Bundle (enthält libavoid-js)
-│   ├── cytoscape-libavoid.umd.js    Bundle für <script>-Tags, globale Variable cytoscapeLibavoid
-│   ├── *.map                        Source Maps
-│   └── libavoid.wasm                libavoid als WebAssembly (~480 kB)
-├── lib/                             kompilierte ES-Module + Typdeklarationen (.d.ts) aus src/
-├── src/                             TypeScript-Quellcode
-│   ├── index.ts                     Cytoscape-Erweiterung, LibavoidRouting, loadLibavoid
-│   ├── routing.ts                   Routing-Kern (routeGraph, computeSankeyPorts, simplify)
-│   ├── edge-style.ts                Umrechnung Route → Cytoscape-Segment-Style
-│   ├── libavoid.ts                  Typen für die genutzte libavoid-js-API
-│   └── umd.ts                       Einstiegspunkt des UMD-Bundles
-├── types/libavoid-js.d.ts           ersetzt die unvollständigen Typen von libavoid-js
+├── src/                             das Plugin (TypeScript), zum Kopieren in andere Projekte
+│   ├── index.ts                     Plugin-Wrapper: Registrierung, cy.libavoid(), Klasse LibavoidRouting
+│   ├── routing.ts                   Routing-Logik: Klasse EdgeRouter, Docking Ports, simplify
+│   ├── libavoid.ts                  libavoid-Anbindung: loadLibavoid, Klasse LibavoidRouter
+│   ├── edge-style.ts                Route → Cytoscape-Style, Klasse EdgeStyler
+│   ├── libavoid-js.d.ts             Ersatz für die fehlerhaften Typen von libavoid-js
+│   └── README.md                    Einbindungsanleitung (englisch)
 ├── demo/
 │   ├── index.html                   Interaktive Demo (Materialfluss)
-│   └── vendor/cytoscape.min.js      Cytoscape für die Demo (nur im ZIP)
+│   └── main.ts                      Demo-Code, nutzt src/ wie ein fremdes Projekt
+├── bench/
+│   ├── perf.ts                      Laufzeitmessung des Routing-Kerns
+│   └── angular/                     Angular-App mit weiteren Plugins, Benchmark in headless Chrome
 ├── docs/DOKUMENTATION.md            dieses Dokument
 ├── docs/LIZENZ.md                   lizenzrechtliche Hinweise (LGPL)
 ├── licenses/                        Lizenztexte (LGPL-2.1, Cytoscape MIT)
 ├── THIRD-PARTY-NOTICES.md           verwendete Fremdkomponenten
-├── scripts/build.ts                 Build (esbuild)
+├── scripts/build-demo.ts            bündelt die Demo nach demo/build/
+├── scripts/ts-resolve.ts            lässt Node.js die Importe ohne .ts-Endung auflösen (Tests, perf)
 ├── scripts/serve.ts                 Mini-Webserver für die Demo
 ├── test/routing.test.ts             Tests (node:test)
-├── tsconfig.json                    Typprüfung (npm run typecheck)
-├── tsconfig.build.json              erzeugt lib/
+├── tsconfig.json                    Typprüfung (npm run typecheck) mit üblichen App-Einstellungen
 ├── LICENSE                          MIT-Lizenz des Plugin-Codes
 ├── package.json
 └── README.md                        Kurzfassung (englisch)
@@ -92,87 +90,53 @@ cytoscape-libavoid/
 
 ## 3. Installation und Einbindung
 
-Das Paket ist nicht auf npm veröffentlicht. Es gibt drei Wege, es
-einzubinden.
+Das Plugin wird nicht als npm-Paket ausgeliefert, sondern als TypeScript-Quellcode,
+den Ihr Projekt selbst mitkompiliert (Angular, Vite, webpack, esbuild …).
 
-### 3a. Als lokales npm-Paket (Bundler wie Vite, webpack, Rollup, esbuild)
+1. Ordner `src/` in Ihr Projekt kopieren, z. B. nach
+   `src/app/cytoscape-libavoid/`.
+2. Abhängigkeiten installieren:
 
-```sh
-# Ordner aus dem ZIP z. B. nach ./vendor/cytoscape-libavoid entpacken
-npm install ./vendor/cytoscape-libavoid
-npm install cytoscape            # Peer-Dependency, falls noch nicht vorhanden
-```
+   ```sh
+   npm install cytoscape libavoid-js
+   ```
 
-Dabei wird `libavoid-js` als Abhängigkeit mitinstalliert. Der Import zeigt auf
-`lib/index.js` (Typen: `lib/index.d.ts`), der Bundler Ihres Projekts übernimmt das Bündeln.
+3. In der `tsconfig.json` Ihres Projekts muss `skipLibCheck: true` gesetzt sein
+   (Standard bei Angular und Vite), weil libavoid-js fehlerhafte `.d.ts`-Dateien
+   mitliefert. `moduleResolution` muss `"bundler"` oder `"node"` sein.
+4. Registrieren und verwenden:
 
-```js
-import cytoscape from 'cytoscape';
-import cytoscapeLibavoid from 'cytoscape-libavoid';
+   ```ts
+   import cytoscape from 'cytoscape';
+   import cytoscapeLibavoid from './cytoscape-libavoid';
 
-cytoscape.use(cytoscapeLibavoid);
-```
+   cytoscape.use(cytoscapeLibavoid);
+   ```
 
-Kopieren Sie zusätzlich die `.wasm`-Datei in Ihre statischen Assets, siehe
-[Abschnitt 4](#4-die-webassembly-datei).
-
-### 3b. Als `<script>`-Tag ohne Build-Werkzeug (UMD)
-
-```html
-<script src="cytoscape.min.js"></script>
-<script src="lib/cytoscape-libavoid.umd.js"></script>
-<!-- libavoid.wasm liegt in lib/ direkt neben dem Bundle -->
-```
-
-Ist `window.cytoscape` beim Laden bereits vorhanden, registriert sich das
-Plugin selbst. Wird Cytoscape erst danach geladen, registrieren Sie es von Hand:
-
-```js
-cytoscape.use(cytoscapeLibavoid);
-```
-
-Die globale Variable `cytoscapeLibavoid` ist die Registrierungsfunktion. Sie
-trägt zusätzlich alle Exporte als Eigenschaften, z. B.
-`cytoscapeLibavoid.loadLibavoid` oder `cytoscapeLibavoid.routeGraph`.
-
-### 3c. Als ES-Modul ohne Bundler
-
-```html
-<script type="module">
-  import cytoscape from './lib/cytoscape.esm.min.mjs';
-  import cytoscapeLibavoid from './lib/cytoscape-libavoid.esm.js';
-  cytoscape.use(cytoscapeLibavoid);
-</script>
-```
-
-`libavoid.wasm` muss neben `cytoscape-libavoid.esm.js` liegen.
+5. `libavoid.wasm` als statische Datei ausliefern, siehe
+   [Abschnitt 4](#4-die-webassembly-datei).
 
 ### Node.js
 
-```js
-import cytoscape from 'cytoscape';
-import cytoscapeLibavoid from 'cytoscape-libavoid';
-cytoscape.use(cytoscapeLibavoid);
-```
-
-In Node.js wird die `.wasm`-Datei automatisch aus `node_modules/libavoid-js`
-geladen.
+In Node.js (z. B. Tests mit headless Cytoscape) funktioniert derselbe Import.
+Die `.wasm`-Datei wird automatisch aus `node_modules/libavoid-js` geladen.
 
 ## 4. Die WebAssembly-Datei
 
-libavoid ist C++-Code, der als `libavoid.wasm` ausgeliefert wird. Die Datei
-wird beim ersten Aufruf von `cy.libavoid()` asynchron geladen, danach im
+libavoid ist C++-Code, der als `libavoid.wasm` (~480 kB) ausgeliefert wird. Die
+Datei wird beim ersten Aufruf von `cy.libavoid()` asynchron geladen, danach im
 Speicher gehalten und von allen Cytoscape-Instanzen der Seite gemeinsam
 genutzt.
 
-| Einbindung | Wo muss die `.wasm` liegen? | `wasmUrl` nötig? |
-|---|---|---|
-| `dist/cytoscape-libavoid.umd.js` | im selben Ordner wie das Bundle | nein |
-| `dist/cytoscape-libavoid.esm.js` | im selben Ordner wie das Bundle | nein |
-| eigener Bundler (`import 'cytoscape-libavoid'`) | beliebig, z. B. `public/` | **ja** |
-| Node.js | – | nein |
+Im Browser kopieren Sie `node_modules/libavoid-js/dist/libavoid.wasm` in die
+statischen Assets und geben die URL als `wasmUrl` an. Bei Angular genügt ein
+Eintrag unter `assets` in der `angular.json`:
 
-Beim eigenen Bundler kopieren Sie die Datei einmalig (oder per Build-Skript):
+```json
+{ "glob": "libavoid.wasm", "input": "node_modules/libavoid-js/dist", "output": "/" }
+```
+
+Bei anderen Bundlern kopieren Sie die Datei einmalig (oder per Build-Skript):
 
 ```sh
 cp node_modules/libavoid-js/dist/libavoid.wasm public/libavoid.wasm
@@ -191,12 +155,13 @@ Hinweise:
   `'wasm-unsafe-eval'` enthalten.
 - Lädt Ihre Anwendung libavoid-js schon an anderer Stelle, geben Sie die
   Instanz direkt mit: `cy.libavoid({ avoidLib: AvoidLib.getInstance() })`.
+- In Node.js ist keine `wasmUrl` nötig.
 
 ## 5. Schnellstart
 
 ```js
 import cytoscape from 'cytoscape';
-import cytoscapeLibavoid from 'cytoscape-libavoid';
+import cytoscapeLibavoid from './cytoscape-libavoid';
 
 cytoscape.use(cytoscapeLibavoid);
 
@@ -226,7 +191,7 @@ const cy = cytoscape({
 });
 
 const routing = cy.libavoid({
-  ports: 'sankey',
+  ports: 'docking',
   flowDirection: 'right',
   cornerRadius: 6,
   wasmUrl: '/libavoid.wasm',
@@ -245,12 +210,12 @@ Alle Optionen sind optional. Sie werden beim Aufruf von `cy.libavoid(options)`
 | Option | Typ | Standard | Beschreibung |
 |---|---|---|---|
 | `routingType` | `'orthogonal' \| 'polyline'` | `'orthogonal'` | `orthogonal`: nur waagerechte und senkrechte Segmente. `polyline`: beliebige Winkel. |
-| `ports` | `'auto' \| 'sankey'` | `'auto'` | `auto`: ein Anschluss pro Knotenseite, libavoid wählt die Seite. `sankey`: eigener Anschluss je Kante, gestapelt nach Breite (siehe [10.2](#102-sankey-ports)). |
-| `flowDirection` | `'right' \| 'left' \| 'down' \| 'up'` | `'right'` | Nur bei `sankey`: Hauptflussrichtung. Bei `right` verlassen Kanten die Quelle rechts und erreichen das Ziel links. |
-| `portSpacing` | `number` (px) | `2` | Nur bei `sankey`: Abstand zwischen gestapelten Kanten an einer Knotenseite. |
+| `ports` | `'auto' \| 'docking'` | `'auto'` | `auto`: ein gemeinsamer Anschluss pro Knotenseite, libavoid wählt die Seite. `docking`: eigener Docking Port je Kantenende, gestapelt nach Breite (siehe [10.2](#102-docking-ports)). |
+| `flowDirection` | `'right' \| 'left' \| 'down' \| 'up'` | `'right'` | Nur bei `docking`: Hauptflussrichtung. Bei `right` verlassen Kanten die Quelle rechts und erreichen das Ziel links. |
+| `portSpacing` | `number` (px) | `2` | Nur bei `docking`: Abstand zwischen benachbarten Ports an einer Knotenseite. |
 | `shapeBufferDistance` | `number` (px) | `12` | Mindestabstand der Routen zu Knoten. |
 | `idealNudgingDistance` | `number \| 'auto'` | `'auto'` | Abstand zwischen parallel laufenden Segmenten. `auto` = Breite der breitesten Kante + `portSpacing`, mindestens 4. |
-| `nudgeConnectedSegments` | `boolean \| 'auto'` | `'auto'` | Auch Segmente auseinanderschieben, die direkt an einem Knoten enden. `auto` = an bei `ports: 'auto'`, aus bei `sankey` (dort liegen die Ports schon fest). |
+| `nudgeConnectedSegments` | `boolean \| 'auto'` | `'auto'` | Auch Segmente auseinanderschieben, die direkt an einem Knoten enden. `auto` = an bei `ports: 'auto'`, aus bei `docking` (dort liegen die Ports schon fest). |
 | `routingParameters` | `object` | `{}` | Rohe libavoid-`RoutingParameter`, z. B. `{ crossingPenalty: 200, segmentPenalty: 50 }`. Unbekannte Namen werfen einen Fehler. |
 | `routingOptions` | `object` | `{}` | Rohe libavoid-`RoutingOption`, z. B. `{ nudgeSharedPathsWithCommonEndPoint: true }`. Unbekannte Namen werfen einen Fehler. |
 
@@ -298,8 +263,8 @@ Mögliche `routingOptions` (libavoid):
 
 | Feld | Element | Werte | Wirkung |
 |---|---|---|---|
-| `data(sourceSide)` | Kante | `'top' \| 'right' \| 'bottom' \| 'left'` | Nur bei `sankey`: Seite, an der die Kante die Quelle verlässt. Überschreibt `flowDirection`. |
-| `data(targetSide)` | Kante | wie oben | Nur bei `sankey`: Seite, an der die Kante das Ziel erreicht. |
+| `data(sourceSide)` | Kante | `'top' \| 'right' \| 'bottom' \| 'left'` | Nur bei `docking`: Seite, an der die Kante die Quelle verlässt. Überschreibt `flowDirection`. |
+| `data(targetSide)` | Kante | wie oben | Nur bei `docking`: Seite, an der die Kante das Ziel erreicht. |
 
 Beispiel: ein Rücklauf, der oben aus dem Knoten austritt und oben wieder
 eintritt.
@@ -392,48 +357,59 @@ gelöscht und die Kanten zeigen wieder ihren Stylesheet-Stil. Danach gibt
 
 ### 8.4 Weitere Exporte
 
-```js
+```ts
 import cytoscapeLibavoid, {
   LibavoidRouting, defaults, loadLibavoid,
-  routeGraph, computeSankeyPorts, simplify,
+  EdgeRouter, EdgeStyler, LibavoidRouter,
+  computeDockingPorts, spreadPorts, simplify,
   routeToEdgeStyle, edgeStyleToPoints,
-} from 'cytoscape-libavoid';
+} from './cytoscape-libavoid';
 ```
 
-| Export | Beschreibung |
-|---|---|
-| `default` | Registrierungsfunktion für `cytoscape.use()` |
-| `LibavoidRouting` | Klasse, siehe 8.3 |
-| `defaults` | Standardoptionen (Objekt, nicht verändern) |
-| `loadLibavoid(wasmUrl?)` → `Promise<Avoid>` | Lädt libavoid einmalig und gibt die Instanz zurück. Weitere Aufrufe liefern dasselbe Promise. Nach einem Fehler wird beim nächsten Aufruf neu versucht. |
-| `routeGraph(Avoid, model, options)` | Routing-Kern, siehe 8.5 |
-| `computeSankeyPorts(model, options)` | Berechnet nur die Sankey-Anschlüsse, siehe 8.5 |
-| `simplify(points)` | Rundet Koordinaten auf 3 Nachkommastellen und entfernt doppelte und kollineare Punkte |
-| `routeToEdgeStyle(points, srcPos, tgtPos, cornerRadius?)` | Wandelt eine Route in ein Cytoscape-Style-Objekt um, siehe 10.3 |
-| `edgeStyleToPoints(style, srcPos, tgtPos)` | Umkehrung von `routeToEdgeStyle` |
+| Export | Datei | Beschreibung |
+|---|---|---|
+| `default` | `index.ts` | Registrierungsfunktion für `cytoscape.use()` |
+| `LibavoidRouting` | `index.ts` | Klasse hinter `cy.libavoid()`, siehe 8.3 |
+| `defaults` | `index.ts` | Standardoptionen (eingefroren) |
+| `EdgeRouter` | `routing.ts` | Routet ein Datenmodell ohne Cytoscape, siehe 8.5 |
+| `computeDockingPorts(model, options)` | `routing.ts` | Berechnet nur die Docking Ports, siehe 8.5 |
+| `spreadPorts(widths, sideLength, spacing)` | `routing.ts` | Verteilt Ports gegebener Breite auf einer Seite, liefert die Mitten als Anteil 0–1 |
+| `simplify(points)` | `routing.ts` | Rundet Koordinaten auf 3 Nachkommastellen und entfernt doppelte und kollineare Punkte |
+| `loadLibavoid(wasmUrl?)` → `Promise<Avoid>` | `libavoid.ts` | Lädt libavoid einmalig und gibt die Instanz zurück. Weitere Aufrufe liefern dasselbe Promise. Nach einem Fehler wird beim nächsten Aufruf neu versucht. |
+| `LibavoidRouter` | `libavoid.ts` | Dünne Hülle um die libavoid-API (Formen, Pins, Verbinder) inkl. Speicherfreigabe; Grundlage von `EdgeRouter` |
+| `EdgeStyler` | `edge-style.ts` | Setzt Routen als Style-Bypass auf Cytoscape-Kanten (`apply`) und entfernt sie wieder (`clear`) |
+| `routeToEdgeStyle(points, sourceCentre, targetCentre, cornerRadius?)` | `edge-style.ts` | Wandelt eine Route in ein Cytoscape-Style-Objekt um, siehe 10.3 |
+| `edgeStyleToPoints(style, sourceCentre, targetCentre)` | `edge-style.ts` | Umkehrung von `routeToEdgeStyle` |
 
-### 8.5 Routing-Kern ohne Cytoscape
+Alle Optionen sind an den Typen `LibavoidOptions` und `RoutingOptions`
+dokumentiert und erscheinen so auch im Editor.
 
-`routeGraph` kennt Cytoscape nicht. Sie können es mit anderen Renderern
+### 8.5 Routing ohne Cytoscape
+
+`EdgeRouter` kennt Cytoscape nicht. Sie können ihn mit anderen Renderern
 (SVG, Canvas, D3) oder serverseitig nutzen.
 
-```js
-import { loadLibavoid, routeGraph } from 'cytoscape-libavoid';
+```ts
+import { EdgeRouter, loadLibavoid } from './cytoscape-libavoid';
 
-const Avoid = await loadLibavoid();
-const routes = routeGraph(Avoid, {
+const avoid = await loadLibavoid();
+const router = new EdgeRouter(avoid, { routingType: 'orthogonal' });
+const routes = router.route({
   nodes: [
-    { id: 'a', x: 0,   y: 0, w: 60, h: 40 },   // x/y = Mittelpunkt
-    { id: 'b', x: 300, y: 0, w: 60, h: 40 },
-    { id: 'wand', x: 150, y: 0, w: 40, h: 200 },
+    { id: 'a', x: 0, y: 0, width: 60, height: 40 }, // x/y = Mittelpunkt
+    { id: 'b', x: 300, y: 0, width: 60, height: 40 },
+    { id: 'wand', x: 150, y: 0, width: 40, height: 200 },
   ],
   edges: [{ id: 'ab', source: 'a', target: 'b', width: 4 }],
-}, { routingType: 'orthogonal' });
+});
 
 routes.get('ab');
 // [{x:0,y:-20}, {x:0,y:-112}, {x:300,y:-112}, {x:300,y:-20}]
 // oben aus a heraus, über die Wand, oben in b hinein
 ```
+
+Ein `EdgeRouter` kann beliebig oft `route()` aufrufen; seine Optionen stehen
+in `router.options`.
 
 **Modell**
 
@@ -441,20 +417,20 @@ routes.get('ab');
 |---|---|---|
 | `nodes[].id` | ja | eindeutige ID |
 | `nodes[].x`, `.y` | ja | Mittelpunkt |
-| `nodes[].w`, `.h` | ja | Breite, Höhe |
+| `nodes[].width`, `.height` | ja | Breite, Höhe |
 | `edges[].id` | ja | eindeutige ID |
 | `edges[].source`, `.target` | ja | Knoten-IDs |
 | `edges[].width` | nein | Breite für Stapeln und Nudging (Standard 0) |
-| `edges[].sourceSide`, `.targetSide` | nein | erzwungene Seite bei `sankey` |
+| `edges[].sourceSide`, `.targetSide` | nein | erzwungene Seite bei `docking` |
 
 Schleifen (Quelle = Ziel) und Kanten mit unbekannten Endpunkten werden
 übersprungen. Optionen wie in [Abschnitt 6](#6-optionen) (nur der Teil
 „Routing“).
 
-Für jeden Aufruf baut `routeGraph` einen neuen libavoid-Router auf und gibt
-danach den gesamten WebAssembly-Speicher wieder frei.
+Für jeden `route()`-Aufruf baut `EdgeRouter` über `LibavoidRouter` einen neuen
+libavoid-Router auf und gibt danach den gesamten WebAssembly-Speicher wieder frei.
 
-**`computeSankeyPorts(model, { flowDirection, portSpacing })`** gibt
+**`computeDockingPorts(model, { flowDirection, portSpacing })`** gibt
 `Map<edgeId, { source: { side, offset }, target: { side, offset } }>` zurück.
 `offset` ist die relative Position (0 bis 1) entlang der Knotenseite.
 
@@ -494,19 +470,20 @@ vielen Positionsänderungen löst also nur wenige Läufe aus.
 1. `model()` sammelt alle sichtbaren Knoten, die zu `obstacles` passen, mit
    ihrer Bounding Box, und alle sichtbaren Kanten aus `edges`, deren beide
    Endpunkte Hindernisse sind.
-2. `routeGraph()` legt in libavoid für jeden Knoten ein Rechteck an, erzeugt
-   die Anschlusspunkte (Ports) und verbindet sie, dann wird geroutet.
-3. Jede Route wird vereinfacht und in einen Cytoscape-Style umgerechnet.
-4. Die Styles werden in einem `cy.batch()` als Bypass gesetzt.
-5. `avoidrouted` wird ausgelöst.
+2. `EdgeRouter.route()` legt über `LibavoidRouter` für jeden Knoten ein
+   Rechteck an, erzeugt die Anschlusspunkte (Ports) und verbindet sie, dann
+   wird geroutet. Jede Route wird vereinfacht.
+3. `EdgeStyler.apply()` rechnet die Routen in Cytoscape-Styles um und setzt sie
+   in einem `cy.batch()` als Bypass; unveränderte Kanten werden übersprungen.
+4. `avoidrouted` wird ausgelöst.
 
 Bei jedem Lauf wird der komplette Graph neu geroutet. Ein Lauf ist meist so
 schnell, dass das auch beim Ziehen flüssig bleibt (siehe
 [Performance](#12-performance)).
 
-### 10.2 Sankey-Ports
+### 10.2 Docking Ports
 
-Im Modus `sankey` gilt für jede Knotenseite:
+Im Modus `docking` gilt für jede Knotenseite:
 
 1. Alle Kanten, die diese Seite nutzen, werden nach der Lage des Gegenknotens
    quer zur Flussrichtung sortiert (bei `right`: nach dessen y-Koordinate).
@@ -514,10 +491,11 @@ Im Modus `sankey` gilt für jede Knotenseite:
    ihre Breite, dazwischen liegt `portSpacing`. Der Stapel sitzt mittig auf der
    Seite.
 3. Ist der Stapel länger als die Seite, wird er proportional gestaucht.
-4. Jede Kante bekommt einen exklusiven Anschluss in der Mitte ihres Bandes.
+4. Jede Kante bekommt einen exklusiven Docking Port in der Mitte ihres Bandes.
 
-So entsteht das typische Sankey-Bild: Flüsse treffen ohne Lücke aufeinander
-und kreuzen sich nicht direkt am Knoten.
+So setzen die Kanten nebeneinander ohne Lücke am Knoten an und kreuzen sich
+nicht direkt am Knoten. Die Verteilung auf einer Seite übernimmt
+`spreadPorts()`.
 
 ### 10.3 Darstellung in Cytoscape
 
@@ -579,7 +557,7 @@ cy.one('layoutstop', () => routing.route());
 ### Flussbreite unabhängig von der angezeigten Breite
 
 ```js
-cy.libavoid({ ports: 'sankey', edgeWidth: (e) => e.data('menge') * 0.5 });
+cy.libavoid({ ports: 'docking', edgeWidth: (e) => e.data('menge') * 0.5 });
 ```
 
 ### Weniger Kreuzungen, weniger Knicke
@@ -593,7 +571,7 @@ cy.libavoid({ routingParameters: { crossingPenalty: 200, segmentPenalty: 50 } })
 ```jsx
 import { useEffect, useRef } from 'react';
 import cytoscape from 'cytoscape';
-import cytoscapeLibavoid from 'cytoscape-libavoid';
+import cytoscapeLibavoid from './cytoscape-libavoid';
 
 cytoscape.use(cytoscapeLibavoid);
 
@@ -601,7 +579,7 @@ export function Flussdiagramm({ elements }) {
   const ref = useRef(null);
   useEffect(() => {
     const cy = cytoscape({ container: ref.current, elements, layout: { name: 'preset' } });
-    const routing = cy.libavoid({ ports: 'sankey', wasmUrl: '/libavoid.wasm' });
+    const routing = cy.libavoid({ ports: 'docking', wasmUrl: '/libavoid.wasm' });
     return () => {
       routing.destroy();              // erst das Routing beenden …
       cy.destroy();                   // … dann Cytoscape
@@ -626,13 +604,13 @@ ein vollständiger Routing-Lauf:
 | Modus | Zeit |
 |---|---|
 | `ports: 'auto'` | ~50–60 ms |
-| `ports: 'sankey'` | ~80–140 ms |
+| `ports: 'docking'` | ~80–140 ms |
 | `routingType: 'polyline'` | ~450–700 ms |
 | Demo (10 Knoten, 13 Kanten, Browser) | ~15 ms |
 
 Die libavoid-Option `performUnifyingNudgingPreprocessingStep` ist
 standardmäßig ausgeschaltet. Eingeschaltet steigt die Zeit für denselben
-Graphen auf 3,4 s (`auto`) bzw. 16 s (`sankey`), dafür gibt es etwas weniger
+Graphen auf 3,4 s (`auto`) bzw. 16 s (`docking`), dafür gibt es etwas weniger
 Knicke. Bei kleinen Graphen ohne Live-Ziehen können Sie sie wieder
 einschalten:
 
@@ -650,7 +628,7 @@ Weitere Hebel bei großen Graphen:
 
 | Problem | Ursache und Lösung |
 |---|---|
-| `ready` wird abgelehnt, 404 auf `libavoid.wasm` | Datei liegt nicht neben dem Bundle bzw. `wasmUrl` stimmt nicht. Den Pfad im Netzwerk-Tab der Browser-Entwicklertools prüfen. |
+| `ready` wird abgelehnt, 404 auf `libavoid.wasm` | Datei wird nicht ausgeliefert oder `wasmUrl` stimmt nicht. Den Pfad im Netzwerk-Tab der Browser-Entwicklertools prüfen. |
 | Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `node scripts/serve.ts`). |
 | `CompileError` oder CSP-Meldung zu WebAssembly | `'wasm-unsafe-eval'` in `script-src` der Content-Security-Policy ergänzen. |
 | `not ready yet, await routing.ready first` | `route()` wurde vor dem Laden aufgerufen. Erst `await routing.ready`. |
@@ -658,7 +636,7 @@ Weitere Hebel bei großen Graphen:
 | Eine Kante wird nicht geroutet | Ein Endpunkt passt nicht zu `obstacles` (z. B. ein Compound-Knoten bei `node:childless`), ein Element ist unsichtbar, oder es ist eine Schleife. Mit `routing.model()` prüfen, was ankommt. |
 | Kanten laufen durch Beschriftungen | `includeLabels: true` |
 | Kanten liegen zu dicht am Knoten | `shapeBufferDistance` erhöhen |
-| Sankey-Bänder überlappen | Knotenseite zu kurz, die Bänder werden gestaucht. Knoten größer machen oder `edgeWidth` verkleinern. |
+| Kanten an einer Knotenseite überlappen | Knotenseite zu kurz, die Bänder werden gestaucht. Knoten größer machen oder `edgeWidth` verkleinern. |
 | Unbekannter Parameter- oder Optionsname | Schreibweise mit den Listen in [Abschnitt 6](#6-optionen) vergleichen. |
 | Node-Prozess (Tests) beendet sich nicht | Am Ende `cy.destroy()` aufrufen. |
 
@@ -668,23 +646,25 @@ Weitere Hebel bei großen Graphen:
 Hindernis (QS) und 13 Flüssen. Die Kantenbreite entspricht der Menge in
 t/Tag.
 
-**Starten** (Node.js ≥ 18 nötig, aber keine weiteren Pakete):
+**Starten** (Node.js ≥ 22.18):
 
 ```sh
-node scripts/serve.ts           # im Paketordner (Node.js ≥ 22.18)
+npm install
+npm run demo                    # bündelt demo/main.ts, startet den Server
 # → http://localhost:8080/demo/
-# anderer Port: PORT=3000 node scripts/serve.ts  (PowerShell: $env:PORT=3000; node scripts/serve.ts)
+# anderer Port: PORT=3000 npm run demo  (PowerShell: $env:PORT=3000; npm run demo)
 ```
 
 Die Demo braucht einen Webserver, weil der Browser `.wasm` nicht von
 `file://` lädt. Jeder andere statische Server geht genauso
-(`npx serve`, `python -m http.server`), wenn er im Paketordner gestartet wird.
+(`npx serve`, `python -m http.server`), wenn er nach `npm run build:demo` im
+Repo-Ordner gestartet wird.
 
 **Bedienung**
 
 | Element | Wirkung |
 |---|---|
-| Ports | `sankey` / `auto` |
+| Ports | `docking` / `auto` |
 | Routing | `orthogonal` / `polyline` |
 | Fluss | `flowDirection` |
 | Eckradius | `cornerRadius` 0–20 px |
@@ -694,39 +674,47 @@ Die Demo braucht einen Webserver, weil der Browser `.wasm` nicht von
 
 Unten rechts zeigt die Demo die Werte aus dem Event `avoidrouted`.
 
-Der Code der Demo ist bewusst kurz gehalten und eignet sich als Vorlage für
-eine eigene Einbindung per `<script>`-Tag.
+Der Code der Demo (`demo/main.ts`) importiert `src`
+genau so, wie es ein anderes Projekt tut, und eignet sich als Vorlage.
 
 ## 15. Entwicklung
 
 ```sh
 npm install
-npm test          # 8 Tests (node:test), inkl. Integrationstest mit headless Cytoscape
-npm run typecheck # Typprüfung mit tsc
-npm run build     # erzeugt lib/ (tsc) und dist/ (ESM, UMD, Source Maps, libavoid.wasm)
-npm run demo      # Build + Demo-Server auf http://localhost:8080/demo/
+npm test            # Tests (node:test), inkl. Integrationstest mit headless Cytoscape
+npm run typecheck   # Typprüfung mit tsc (Plugin, Tests, Skripte, Demo)
+npm run perf        # Laufzeit des Routing-Kerns
+npm run demo        # Demo bündeln + Demo-Server auf http://localhost:8080/demo/
 ```
 
-Aufbau des Quellcodes:
+Das Plugin importiert seine Dateien ohne `.ts`-Endung, wie es Bundler
+erwarten. Node.js führt Tests und Benchmark direkt per Type Stripping aus;
+`scripts/ts-resolve.ts` ergänzt dabei die Endung.
 
-- `src/routing.ts`: Routing-Kern. Kennt nur das einfache Modell und libavoid.
-- `src/edge-style.ts`: reine Geometrie, Route ↔ Cytoscape-Style.
-- `src/index.ts`: Cytoscape-Anbindung (Modell aus `cy` erzeugen, Styles
-  setzen, Events, Laden der `.wasm`).
-- `src/umd.ts`: Einstieg für das `<script>`-Bundle, registriert sich
-  automatisch.
+Aufbau des Quellcodes (eine Klasse pro Datei):
+
+| Datei | Klasse | Aufgabe |
+|---|---|---|
+| `index.ts` | `LibavoidRouting` | Plugin-Wrapper: Optionen, Modell aus `cy` erzeugen, auf Änderungen hören, Registrierung von `cy.libavoid()`. Delegiert Routing und Styling. |
+| `routing.ts` | `EdgeRouter` | Routing-Logik und Docking Ports. Kennt nur das einfache Modell, nicht Cytoscape. |
+| `libavoid.ts` | `LibavoidRouter` | libavoid-Anbindung: lädt die `.wasm`, kapselt die libavoid-API und deren Speicherverwaltung. |
+| `edge-style.ts` | `EdgeStyler` | Route ↔ Cytoscape-Style (reine Geometrie) und das Setzen / Entfernen der Styles. |
 
 Wichtig beim Arbeiten mit libavoid-js: Jedes mit `new` erzeugte Objekt liegt im
-WebAssembly-Speicher und muss mit `.delete()` freigegeben werden.
-`routeGraph` erledigt das im `finally`-Block. Objekte, die dem Router gehören
-(Shapes, Pins, Connectors), werden mit `router.delete()` freigegeben.
+WebAssembly-Speicher und muss mit `.delete()` freigegeben werden. Das übernimmt
+`LibavoidRouter`: Hilfsobjekte merkt er sich und gibt sie in `dispose()` frei,
+Objekte, die dem libavoid-Router gehören (Shapes, Pins, Connectors), werden mit
+dem Router freigegeben. `EdgeRouter.route()` ruft `dispose()` im
+`finally`-Block auf.
+
+Formatiert wird mit Prettier (`npm run format`, Prüfung: `npm run format:check`).
 
 ## 16. Lizenz
 
 Der Plugin-Code steht unter der **MIT-Lizenz** (`LICENSE`).
 
-libavoid und libavoid-js stehen unter **LGPL-2.1-or-later**. Die Bundles in
-`dist/` enthalten libavoid-js. Wer eine Anwendung mit dem Plugin weitergibt,
+libavoid und libavoid-js stehen unter **LGPL-2.1-or-later**. Eine Anwendung,
+die das Plugin nutzt, bündelt libavoid-js. Wer sie weitergibt,
 wozu auch eine öffentliche Webanwendung zählt, muss die LGPL-Pflichten
 erfüllen. Was das konkret bedeutet, was im Paket schon erledigt ist und was
 noch offen ist, steht in **[LIZENZ.md](LIZENZ.md)**.

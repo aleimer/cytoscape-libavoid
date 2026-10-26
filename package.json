@@ -1,57 +1,20 @@
 {
   "name": "cytoscape-libavoid",
   "version": "0.1.0",
-  "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly), incl. sankey-style ports for material flow diagrams",
+  "private": true,
+  "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly), incl. docking ports that give every edge its own place on the node side",
   "type": "module",
-  "main": "./lib/index.js",
-  "module": "./lib/index.js",
-  "types": "./lib/index.d.ts",
-  "browser": "./dist/cytoscape-libavoid.esm.js",
-  "unpkg": "./dist/cytoscape-libavoid.umd.js",
-  "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "import": "./lib/index.js",
-      "default": "./lib/index.js"
-    },
-    "./standalone": {
-      "types": "./lib/index.d.ts",
-      "default": "./dist/cytoscape-libavoid.standalone.js"
-    },
-    "./dist/*": "./dist/*",
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "docs/",
-    "licenses/",
-    "THIRD-PARTY-NOTICES.md",
-    "lib/",
-    "src/",
-    "dist/",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/build.ts",
     "typecheck": "tsc",
-    "test": "node --test \"test/**/*.test.ts\"",
-    "demo": "npm run build && node scripts/serve.ts",
-    "prepublishOnly": "npm run typecheck && npm run build && npm test"
+    "test": "node --import ./scripts/ts-resolve.ts --test \"test/**/*.test.ts\"",
+    "perf": "node --import ./scripts/ts-resolve.ts bench/perf.ts",
+    "build:demo": "node scripts/build-demo.ts",
+    "demo": "npm run build:demo && node scripts/serve.ts",
+    "format": "prettier --write \"**/*.{ts,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,json}\""
   },
-  "keywords": [
-    "cytoscape",
-    "cytoscape-extension",
-    "libavoid",
-    "edge-routing",
-    "orthogonal",
-    "sankey",
-    "material-flow"
-  ],
   "author": "Philipp Kabala",
   "license": "MIT",
-  "peerDependencies": {
-    "cytoscape": "^3.2.0"
-  },
   "dependencies": {
     "libavoid-js": "^0.5.0-beta.5"
   },
@@ -59,6 +22,7 @@
     "@types/node": "^25.9.9",
     "cytoscape": "^3.34.3",
     "esbuild": "^0.28.2",
+    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   },
   "repository": {

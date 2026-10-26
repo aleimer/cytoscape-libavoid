@@ -1,29 +1,51 @@
-import { AvoidLib } from 'libavoid-js';
-import type cytoscapeFactory from 'cytoscape';
-import type { Core, EdgeSingular, EventHandler, EventObject, NodeSingular } from 'cytoscape';
-import { routeGraph, defaultRoutingOptions, SIDES } from './routing.ts';
-import type { GraphModel, RoutingOptions, Side } from './routing.ts';
-import { routeToEdgeStyle, STYLE_PROPS } from './edge-style.ts';
-import type { Avoid, Point } from './libavoid.ts';
+// Plugin wrapper: registers `cy.libavoid()` and keeps the routes of a Cytoscape
+// graph up to date. Routing is done by EdgeRouter (routing.ts), styling by
+// EdgeStyler (edge-style.ts).
 
-export { routeGraph, computeSankeyPorts, simplify } from './routing.ts';
-export type { FlowDirection, GraphEdge, GraphModel, GraphNode, RoutingOptions, SankeyPort, SankeyPorts, Side } from './routing.ts';
-export { routeToEdgeStyle, edgeStyleToPoints } from './edge-style.ts';
-export type { EdgeSegmentStyle } from './edge-style.ts';
-export type { Avoid, Point, RoutingOptionName, RoutingParameterName } from './libavoid.ts';
+import type cytoscapeFactory from 'cytoscape';
+import type { Core, EdgeSingular, EventHandler } from 'cytoscape';
+import { EdgeStyler } from './edge-style';
+import { loadLibavoid, SIDES } from './libavoid';
+import type { Avoid, Point, Side } from './libavoid';
+import { defaultRoutingOptions, EdgeRouter, resolveRoutingOptions } from './routing';
+import type { GraphModel, RoutingOptions } from './routing';
+
+export { routeToEdgeStyle, edgeStyleToPoints, EdgeStyler } from './edge-style';
+export type { EdgeSegmentStyle } from './edge-style';
+export { loadLibavoid, LibavoidRouter } from './libavoid';
+export type { Avoid, PinSpec, Point, RoutingOptionName, RoutingParameterName, RoutingType, Side } from './libavoid';
+export { computeDockingPorts, defaultRoutingOptions, EdgeRouter, simplify, spreadPorts } from './routing';
+export type {
+  DockingPort,
+  EdgePorts,
+  FlowDirection,
+  GraphEdge,
+  GraphModel,
+  GraphNode,
+  RoutingOptions,
+} from './routing';
 
 const SCRATCH_KEY = '_libavoid';
 const ROUTED_EVENT = 'avoidrouted';
 
 export interface LibavoidOptions extends RoutingOptions {
+  /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
   wasmUrl?: string;
+  /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. */
   avoidLib?: Avoid;
+  /** Selector of the edges to route. @default 'edge' */
   edges: string;
+  /** Selector of the nodes that act as obstacles and edge endpoints. @default 'node:childless' */
   obstacles: string;
+  /** Count node labels as part of the obstacle. @default false */
   includeLabels: boolean;
+  /** Stroke width of an edge, used to space docking ports and parallel segments. @default the `width` style */
   edgeWidth: (edge: EdgeSingular) => number;
+  /** 0 = sharp corners, > 0 = rounded corners with this radius (px). @default 0 */
   cornerRadius: number;
+  /** Re-route automatically when elements are added, removed, moved or changed. @default true */
   live: boolean;
+  /** With `live`: re-route continuously while a node is dragged; false = only on release. @default true */
   rerouteOnDrag: boolean;
 }
 
@@ -34,170 +56,125 @@ export interface RoutedEventInfo {
   totalMs: number;
 }
 
-export const defaults: LibavoidOptions = {
+export const defaults: Readonly<LibavoidOptions> = Object.freeze({
   ...defaultRoutingOptions,
-  wasmUrl: undefined, // URL of libavoid.wasm; required in the browser unless the file sits next to the bundle
-  avoidLib: undefined, // an already loaded libavoid instance (AvoidLib.getInstance()); skips loading
-  edges: 'edge', // selector for edges to route
-  obstacles: 'node:childless', // selector for nodes acting as obstacles / endpoints
-  includeLabels: false, // let node labels count as part of the obstacle
-  edgeWidth: (edge) => Number(edge.numericStyle('width')), // used for sankey stacking and auto nudging
-  cornerRadius: 0, // 0 = sharp taxi corners, > 0 = rounded corners ('round-segments')
-  live: true, // re-route automatically on add / remove / move / data changes
-  rerouteOnDrag: true, // when live: re-route continuously while dragging (false = only on release)
-};
+  edges: 'edge',
+  obstacles: 'node:childless',
+  includeLabels: false,
+  edgeWidth: (edge: EdgeSingular) => Number(edge.numericStyle('width')),
+  cornerRadius: 0,
+  live: true,
+  rerouteOnDrag: true,
+});
 
-let loading: Promise<Avoid> | null = null;
+const nextFrame: (callback: () => void) => void =
+  typeof requestAnimationFrame === 'function'
+    ? (callback) => requestAnimationFrame(callback)
+    : (callback) => setTimeout(callback, 0);
 
-// In a classic <script> (UMD build) libavoid cannot find its .wasm on its own
-// because it loads asynchronously, after document.currentScript is gone.
-const currentScript = typeof document !== 'undefined' ? document.currentScript : null;
-const scriptSrc = currentScript && 'src' in currentScript ? currentScript.src : undefined;
-
-/** Loads the libavoid WebAssembly module once and caches the instance. */
-export function loadLibavoid(wasmUrl?: string): Promise<Avoid> {
-  if (!loading) {
-    if (wasmUrl === undefined && scriptSrc) wasmUrl = new URL('libavoid.wasm', scriptSrc).href;
-    loading = AvoidLib.load(wasmUrl)
-      .then(() => AvoidLib.getInstance())
-      .catch((err: Error) => {
-        loading = null;
-        throw err;
-      });
-  }
-  return loading;
-}
-
-const schedule: (fn: () => void) => void =
-  typeof requestAnimationFrame === 'function' ? (fn) => requestAnimationFrame(fn) : (fn) => setTimeout(fn, 0);
-
+/** Routes the edges of one Cytoscape instance; created by `cy.libavoid(options)`. */
 export class LibavoidRouting {
   readonly cy: Core;
   readonly options: LibavoidOptions;
+  /** Resolves once libavoid is loaded and the first routing run is done. */
   readonly ready: Promise<LibavoidRouting>;
-  Avoid: Avoid | null = null;
-  routes = new Map<string, Point[]>();
-  styled = new Set<string>();
-  destroyed = false;
-  private _pending = false;
-  private _modelKey = '';
-  // edge id -> element + style last applied to it, to skip unchanged edges
-  private _applied = new Map<string, { ele: unknown; key: string }>();
-  private _listeners: Array<[string, string, EventHandler]> = [];
+
+  private avoid: Avoid | undefined;
+  private readonly styler: EdgeStyler;
+  private currentRoutes = new Map<string, Point[]>();
+  private destroyed = false;
+  private routePending = false;
+  /** The model of the last run, serialised, to skip re-routes when nothing moved. */
+  private lastModelKey = '';
+  private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
   constructor(cy: Core, options: Partial<LibavoidOptions> = {}) {
     this.cy = cy;
-    this.options = { ...defaults, ...options };
+    this.options = resolveRoutingOptions(defaults, options);
+    this.styler = new EdgeStyler(cy);
 
-    const instance = this.options.avoidLib ? Promise.resolve(this.options.avoidLib) : loadLibavoid(this.options.wasmUrl);
-    this.ready = instance.then((Avoid) => {
+    const libavoid = this.options.avoidLib
+      ? Promise.resolve(this.options.avoidLib)
+      : loadLibavoid(this.options.wasmUrl);
+    this.ready = libavoid.then((avoid) => {
       if (this.destroyed) return this;
-      this.Avoid = Avoid;
-      if (this.options.live) this._bind();
+      this.avoid = avoid;
+      if (this.options.live) this.startListening();
       this.route();
       return this;
     });
   }
 
-  /** Builds the plain graph model handed to the routing core. */
+  /** Edge id -> route points of the last run. */
+  get routes(): ReadonlyMap<string, Point[]> {
+    return this.currentRoutes;
+  }
+
+  /** Route points of an edge (element or id), or undefined if it is not routed. */
+  getRoute(edge: EdgeSingular | string): Point[] | undefined {
+    return this.currentRoutes.get(typeof edge === 'string' ? edge : edge.id());
+  }
+
+  /** Builds the plain graph model handed to the EdgeRouter. */
   model(): GraphModel {
     const { cy, options } = this;
-    const nodes = cy.nodes(options.obstacles).filter((n) => n.visible());
-    const nodeIds = new Set(nodes.map((n) => n.id()));
+    const nodes = cy.nodes(options.obstacles).filter((node) => node.visible());
+    const nodeIds = new Set(nodes.map((node) => node.id()));
     const edges = cy
       .edges(options.edges)
-      .toArray()
-      .filter((e) => e.visible() && nodeIds.has(e.source().id()) && nodeIds.has(e.target().id()));
+      .toArray() // Collection.filter() loses the edge type
+      .filter((edge) => edge.visible() && nodeIds.has(edge.source().id()) && nodeIds.has(edge.target().id()));
 
     return {
-      nodes: nodes.map((n) => {
-        const bb = n.boundingBox({ includeLabels: options.includeLabels, includeOverlays: false });
-        return { id: n.id(), x: (bb.x1 + bb.x2) / 2, y: (bb.y1 + bb.y2) / 2, w: bb.w, h: bb.h };
+      nodes: nodes.map((node) => {
+        const box = node.boundingBox({ includeLabels: options.includeLabels, includeOverlays: false });
+        return { id: node.id(), x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2, width: box.w, height: box.h };
       }),
-      edges: edges.map((e) => ({
-        id: e.id(),
-        source: e.source().id(),
-        target: e.target().id(),
-        width: Number(options.edgeWidth(e)) || 0,
-        sourceSide: side(e.data('sourceSide')),
-        targetSide: side(e.data('targetSide')),
+      edges: edges.map((edge) => ({
+        id: edge.id(),
+        source: edge.source().id(),
+        target: edge.target().id(),
+        width: Number(options.edgeWidth(edge)) || 0,
+        sourceSide: parseSide(edge.data('sourceSide')),
+        targetSide: parseSide(edge.data('targetSide')),
       })),
     };
   }
 
-  /** Routes all edges now. Returns a Map edge id -> route points. */
-  route(): Map<string, Point[]> {
-    if (this.destroyed) return this.routes;
-    if (!this.Avoid) throw new Error('cytoscape-libavoid: not ready yet, await routing.ready first');
-    return this._route(this.model());
-  }
-
-  private _route(model: GraphModel): Map<string, Point[]> {
-    const { cy, options } = this;
-    const t0 = now();
-    const routes = routeGraph(this.Avoid!, model, options);
-    this._modelKey = JSON.stringify(model);
-    const t1 = now();
-
-    cy.batch(() => {
-      for (const id of this.styled) {
-        if (!routes.has(id)) {
-          const edge = cy.getElementById(id);
-          if (edge.nonempty()) edge.removeStyle(STYLE_PROPS.join(' '));
-          this.styled.delete(id);
-          this._applied.delete(id);
-        }
-      }
-      for (const [id, points] of routes) {
-        const edge = cy.getElementById(id);
-        const style = routeToEdgeStyle(points, edge.source().position(), edge.target().position(), options.cornerRadius);
-        if (!style) continue;
-        // every style update is costly and, with compound nodes, fires 'style' on all nodes
-        const key = JSON.stringify(style);
-        const prev = this._applied.get(id);
-        if (prev && prev.ele === edge[0] && prev.key === key) continue;
-        if (!(options.cornerRadius > 0)) edge.removeStyle('segment-radii radius-type');
-        edge.style(style);
-        this.styled.add(id);
-        this._applied.set(id, { ele: edge[0], key });
-      }
-    });
-
-    this.routes = routes;
-    const info: RoutedEventInfo = { edges: routes.size, routingMs: t1 - t0, totalMs: now() - t0 };
-    cy.emit(ROUTED_EVENT, [info]);
-    return routes;
+  /** Routes all edges now. */
+  route(): ReadonlyMap<string, Point[]> {
+    if (this.destroyed) return this.currentRoutes;
+    if (!this.avoid) throw new Error('cytoscape-libavoid: not ready yet, await routing.ready first');
+    return this.routeModel(this.avoid, this.model());
   }
 
   /**
    * Coalesces many change events into one re-route per animation frame, and
    * skips it when the routing input did not change: style / data events also
    * fire for changes that do not move anything, e.g. live data, or (with
-   * compound nodes) for every node whenever edge styles are set by route().
+   * compound nodes) for every node whenever edge styles are set.
    */
   scheduleRoute(): void {
-    if (this._pending || this.destroyed || !this.Avoid) return;
-    this._pending = true;
-    schedule(() => {
-      this._pending = false;
-      if (this.destroyed) return;
+    if (this.routePending || this.destroyed || !this.avoid) return;
+    this.routePending = true;
+    nextFrame(() => {
+      this.routePending = false;
+      if (this.destroyed || !this.avoid) return;
+      // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
+      if (!this.options.rerouteOnDrag && this.cy.nodes(':grabbed').nonempty()) return;
       const model = this.model();
-      if (JSON.stringify(model) !== this._modelKey) this._route(model);
+      if (JSON.stringify(model) !== this.lastModelKey) this.routeModel(this.avoid, model);
     });
-  }
-
-  /** Route points of an edge (edge element or id), or undefined if not routed. */
-  getRoute(edge: EdgeSingular | string): Point[] | undefined {
-    const id = typeof edge === 'string' ? edge : edge.id();
-    return this.routes.get(id);
   }
 
   /** Changes options and re-routes. */
   setOptions(options: Partial<LibavoidOptions>): this {
     const wasLive = this.options.live;
     Object.assign(this.options, options);
-    if (this.Avoid && wasLive !== this.options.live) this.options.live ? this._bind() : this._unbind();
-    if (this.Avoid) this.route();
+    if (!this.avoid) return this; // the first run picks the options up
+    if (this.options.live && !wasLive) this.startListening();
+    if (!this.options.live && wasLive) this.stopListening();
+    this.route();
     return this;
   }
 
@@ -205,70 +182,66 @@ export class LibavoidRouting {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this._unbind();
-    const { cy } = this;
-    cy.batch(() => {
-      for (const id of this.styled) {
-        const edge = cy.getElementById(id);
-        if (edge.nonempty()) edge.removeStyle(STYLE_PROPS.join(' '));
-      }
-    });
-    this.styled.clear();
-    this._applied.clear();
-    this.routes.clear();
-    if (cy.scratch(SCRATCH_KEY) === this) cy.removeScratch(SCRATCH_KEY);
+    this.stopListening();
+    this.styler.clear();
+    this.currentRoutes.clear();
+    if (this.cy.scratch(SCRATCH_KEY) === this) this.cy.removeScratch(SCRATCH_KEY);
   }
 
-  private _on(events: string, selector: string, handler: EventHandler): void {
-    this.cy.on(events, selector, handler);
-    this._listeners.push([events, selector, handler]);
+  private routeModel(avoid: Avoid, model: GraphModel): ReadonlyMap<string, Point[]> {
+    const start = performance.now();
+    const routes = new EdgeRouter(avoid, this.options).route(model);
+    this.lastModelKey = JSON.stringify(model);
+    const routed = performance.now();
+
+    this.styler.apply(routes, this.options.cornerRadius);
+    this.currentRoutes = routes;
+
+    const info: RoutedEventInfo = { edges: routes.size, routingMs: routed - start, totalMs: performance.now() - start };
+    this.cy.emit(ROUTED_EVENT, [info]);
+    return routes;
   }
 
-  private _bind(): void {
-    if (this._listeners.length) return;
+  private startListening(): void {
+    if (this.listeners.length) return;
     const reroute = () => this.scheduleRoute();
-    this._on('add remove data', '*', reroute);
-    this._on('class style', 'node', reroute); // node size may depend on classes / styles
-    this._on('class', 'edge', reroute); // edge width may depend on classes
-    this._on('position', 'node', (evt: EventObject) => {
-      const node: NodeSingular = evt.target;
-      if (this.options.rerouteOnDrag || !node.grabbed()) reroute();
-    });
-    this._on('free', 'node', reroute);
+    this.listen('add remove data', '*', reroute);
+    this.listen('class style', 'node', reroute); // node size may depend on classes / styles
+    this.listen('class', 'edge', reroute); // edge width may depend on classes
+    this.listen('position', 'node', reroute); // rerouteOnDrag is checked in scheduleRoute()
+    this.listen('free', 'node', reroute);
   }
 
-  private _unbind(): void {
-    for (const [events, selector, handler] of this._listeners) this.cy.off(events, selector, handler);
-    this._listeners = [];
+  private stopListening(): void {
+    for (const [events, selector, handler] of this.listeners) this.cy.off(events, selector, handler);
+    this.listeners = [];
+  }
+
+  private listen(events: string, selector: string, handler: EventHandler): void {
+    this.cy.on(events, selector, handler);
+    this.listeners.push([events, selector, handler]);
   }
 }
 
-const side = (v: string | undefined): Side | undefined => SIDES.find((s) => s === v);
-const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const parseSide = (value: unknown): Side | undefined => SIDES.find((side) => side === value);
 
 declare module 'cytoscape' {
   interface Core {
     /**
-     * Calling it with options replaces the previous instance; without
-     * options it returns the current one (creating it with defaults if needed).
+     * With options: creates a new routing instance (replacing the previous one).
+     * Without options: returns the current instance, creating it with defaults if needed.
      */
     libavoid(options?: Partial<LibavoidOptions>): LibavoidRouting;
   }
 }
 
-/**
- * Cytoscape extension entry point: `cytoscape.use(cytoscapeLibavoid)`.
- * Adds `cy.libavoid(options)` which returns a LibavoidRouting instance.
- * Calling it again with options replaces the previous instance; without
- * options it returns the current one (creating it with defaults if needed).
- */
-export default function register(cytoscape: typeof cytoscapeFactory | undefined): void {
-  if (!cytoscape) return;
+/** Cytoscape extension entry point: `cytoscape.use(cytoscapeLibavoid)` adds `cy.libavoid()`. */
+export default function register(cytoscape: typeof cytoscapeFactory): void {
   cytoscape('core', 'libavoid', function (this: Core, options?: Partial<LibavoidOptions>): LibavoidRouting {
     const stored = this.scratch(SCRATCH_KEY);
     const current = stored instanceof LibavoidRouting ? stored : undefined;
     if (current && !options) return current;
-    if (current) current.destroy();
+    current?.destroy();
     const routing = new LibavoidRouting(this, options);
     this.scratch(SCRATCH_KEY, routing);
     return routing;
