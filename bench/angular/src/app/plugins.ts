@@ -94,8 +94,6 @@ export async function attachPlugins(cy: Core, config: BenchConfig): Promise<void
   }
   if (on('libavoid')) {
     const routing = cy.libavoid({
-      ports: config.ports,
-      flowDirection: 'right',
       cornerRadius: config.cornerRadius,
       rerouteOnDrag: config.rerouteOnDrag,
       dragRouteInterval: config.dragRouteInterval,

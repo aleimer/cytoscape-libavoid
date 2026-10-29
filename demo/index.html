@@ -1,34 +1,76 @@
 <!doctype html>
 <html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>cytoscape-libavoid Demo</title>
-  <link rel="icon" href="data:," />
-  <style>
-    html, body { margin: 0; height: 100%; font: 14px system-ui, sans-serif; background: #fafafa; color: #222; }
-    #cy { position: absolute; inset: 48px 0 0 0; }
-    header { height: 48px; display: flex; gap: 16px; align-items: center; padding: 0 16px; border-bottom: 1px solid #ddd; background: #fff; flex-wrap: wrap; }
-    header label { display: flex; gap: 6px; align-items: center; }
-    #stats { margin-left: auto; color: #666; font-variant-numeric: tabular-nums; }
-  </style>
-</head>
-<body>
-  <header>
-    <strong>cytoscape-libavoid</strong>
-    <label>Ports <select id="ports"><option value="docking">docking</option><option value="auto">auto</option></select></label>
-    <label>Routing <select id="routingType"><option>orthogonal</option><option>polyline</option></select></label>
-    <label>Fluss <select id="flowDirection"><option>right</option><option>down</option><option>left</option><option>up</option><option>auto</option></select></label>
-    <label>Eckradius <input id="cornerRadius" type="range" min="0" max="20" value="6" /></label>
-    <label><input id="rerouteOnDrag" type="checkbox" checked /> beim Ziehen routen</label>
-    <label title="Beschriftung auf das längste Segment statt in die Mitte"><input id="labelPosition" type="checkbox" checked /> Label auf längstem Segment</label>
-    <label title="Routing in einem Web Worker (lädt die Seite neu)"><input id="worker" type="checkbox" /> Worker</label>
-    <button id="add">+ Hindernis</button>
-    <span id="stats"></span>
-  </header>
-  <div id="cy"></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>cytoscape-libavoid Demo</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font:
+          14px system-ui,
+          sans-serif;
+        background: #fafafa;
+        color: #222;
+      }
+      #cy {
+        position: absolute;
+        inset: 48px 0 0 0;
+      }
+      header {
+        height: 48px;
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        padding: 0 16px;
+        border-bottom: 1px solid #ddd;
+        background: #fff;
+        flex-wrap: wrap;
+      }
+      header label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #stats {
+        margin-left: auto;
+        color: #666;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>cytoscape-libavoid</strong>
+      <label title="Lädt die Seite neu. Stahlwerk: Doppelklick auf eine Gruppe klappt sie ein oder aus"
+        >Graph
+        <select id="graph">
+          <option value="small">Beispiel</option>
+          <option value="plant">Stahlwerk</option>
+        </select></label
+      >
+      <label><input id="rerouteOnDrag" type="checkbox" checked /> beim Ziehen routen</label>
+      <label title="Erst routen, wenn der gezogene Knoten so lange ruht (0 = aus); beim Loslassen wird sofort geroutet"
+        >Verzögerung
+        <input id="dragRouteDelay" type="number" min="0" step="100" value="600" style="width: 5em" /> ms</label
+      >
+      <label title="Kanten gezogener Knoten ausblenden, bis sie neu geroutet sind"
+        ><input id="hideEdgesOnDrag" type="checkbox" checked /> Kanten beim Ziehen ausblenden</label
+      >
+      <label title="Beschriftung auf das längste Segment statt in die Mitte"
+        ><input id="labelPosition" type="checkbox" checked /> Label auf längstem Segment</label
+      >
+      <label title="Routing in einem Web Worker (lädt die Seite neu)"
+        ><input id="worker" type="checkbox" /> Worker</label
+      >
+      <span id="stats"></span>
+    </header>
+    <div id="cy"></div>
 
-  <!-- built from main.ts by `npm run build:demo` -->
-  <script type="module" src="build/main.js"></script>
-</body>
+    <!-- built from main.ts by `npm run build:demo` -->
+    <script type="module" src="build/main.js"></script>
+  </body>
 </html>

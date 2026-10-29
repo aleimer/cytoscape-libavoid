@@ -41,8 +41,6 @@ cytoscape.use(cytoscapeLibavoid); // once, at startup
 const cy = cytoscape({ container, elements, style });
 const routing = cy.libavoid({
   wasmUrl: 'libavoid.wasm', // URL relative to the page, as served in step 2
-  ports: 'docking', // or 'auto'
-  flowDirection: 'right',
   cornerRadius: 8,
 });
 await routing.ready;
@@ -53,7 +51,7 @@ routing.destroy(); // restore the edges' own styles
 ```
 
 `cy.libavoid()` without options returns the current instance. All options are
-documented on the `LibavoidOptions` type in `index.ts`; the defaults are in `defaults`.
+documented on the `LibavoidOptions` type in `cytoscape-adapter/options.ts`; the defaults are in `defaults`.
 
 ## 4. Optional: route in a Web Worker
 
@@ -65,7 +63,7 @@ the worker entry; Angular, Vite and webpack 5 bundle it from this pattern:
 const worker = new Worker(new URL('./cytoscape-libavoid/routing.worker', import.meta.url), { type: 'module' });
 const routing = cy.libavoid({ worker, wasmUrl: 'libavoid.wasm' });
 await routing.ready;
-await routing.refresh(); // instead of routing.route(), which is synchronous
+await routing.refresh(); // routes now and resolves to the routes
 ```
 
 The plugin does not terminate the worker; several instances may share one.

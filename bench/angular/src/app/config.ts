@@ -1,5 +1,5 @@
 // Bench configuration, read from the URL so every run starts from a fresh page:
-//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=docking&drag=1&interval=auto&worker=0
+//   ?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&drag=1&interval=auto&worker=0
 
 export type ZoneMode = 'zoneless' | 'zone' | 'zone-outside';
 export type PluginName = 'libavoid' | 'gridGuide' | 'expandCollapse' | 'htmlLabel';
@@ -10,7 +10,6 @@ export interface BenchConfig {
   /** zoneless; zone = cytoscape created inside the Angular zone (typical); zone-outside = runOutsideAngular */
   zone: ZoneMode;
   plugins: PluginName[];
-  ports: 'auto' | 'docking';
   rerouteOnDrag: boolean;
   /** libavoid dragRouteInterval: 'auto' or ms between re-routes while dragging (0 = every frame) */
   dragRouteInterval: number | 'auto';
@@ -23,7 +22,6 @@ export const DEFAULT_CONFIG: BenchConfig = {
   size: 'M',
   zone: 'zone',
   plugins: [...PLUGIN_NAMES],
-  ports: 'docking',
   rerouteOnDrag: true,
   dragRouteInterval: 'auto',
   worker: false,
@@ -43,7 +41,6 @@ export function readConfig(search = location.search): BenchConfig {
     size: pick('size', ['S', 'M', 'L'], DEFAULT_CONFIG.size),
     zone: pick('zone', ['zoneless', 'zone', 'zone-outside'], DEFAULT_CONFIG.zone),
     plugins,
-    ports: pick('ports', ['auto', 'docking'], DEFAULT_CONFIG.ports),
     rerouteOnDrag: q.has('drag') ? q.get('drag') !== '0' : DEFAULT_CONFIG.rerouteOnDrag,
     dragRouteInterval: readInterval(q.get('interval')),
     worker: q.has('worker') ? q.get('worker') === '1' : DEFAULT_CONFIG.worker,
@@ -56,7 +53,6 @@ export function configToQuery(c: BenchConfig): string {
     size: c.size,
     zone: c.zone,
     plugins: c.plugins.join(','),
-    ports: c.ports,
     drag: c.rerouteOnDrag ? '1' : '0',
     interval: String(c.dragRouteInterval),
     worker: c.worker ? '1' : '0',
@@ -68,7 +64,7 @@ export function configToQuery(c: BenchConfig): string {
 export function describeConfig(c: BenchConfig): string {
   const plugins = c.plugins.length ? c.plugins.join('+') : 'none';
   const drag = !c.rerouteOnDrag ? ' noDragRoute' : c.dragRouteInterval === 'auto' ? '' : ` interval=${c.dragRouteInterval}`;
-  const libavoid = c.plugins.includes('libavoid') ? ` ${c.ports}${drag}${c.worker ? ' worker' : ''}` : '';
+  const libavoid = c.plugins.includes('libavoid') ? `${drag}${c.worker ? ' worker' : ''}` : '';
   return `${c.size} ${c.zone} [${plugins}]${libavoid}`;
 }
 

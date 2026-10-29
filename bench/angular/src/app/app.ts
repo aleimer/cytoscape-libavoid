@@ -44,12 +44,6 @@ declare global {
       @for (p of pluginNames; track p) {
         <label><input type="checkbox" [checked]="draft().plugins.includes(p)" (change)="togglePlugin(p)" /> {{ p }}</label>
       }
-      <label>Ports
-        <select [value]="draft().ports" (change)="set('ports', $any($event.target).value)">
-          <option value="docking">docking</option>
-          <option value="auto">auto</option>
-        </select>
-      </label>
       <label><input type="checkbox" [checked]="draft().rerouteOnDrag" (change)="set('rerouteOnDrag', !draft().rerouteOnDrag)" /> rerouteOnDrag</label>
       <label>dragRouteInterval
         <select [value]="draft().dragRouteInterval" (change)="set('dragRouteInterval', $any($event.target).value === 'auto' ? 'auto' : +$any($event.target).value)">

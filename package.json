@@ -2,17 +2,21 @@
   "name": "cytoscape-libavoid",
   "version": "0.1.0",
   "private": true,
-  "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly), incl. docking ports that give every edge its own place on the node side",
+  "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly)",
   "type": "module",
   "scripts": {
     "typecheck": "tsc && tsc -p tsconfig.strict.json",
     "test": "node --import ./scripts/ts-resolve.ts --test \"test/**/*.test.ts\"",
+    "test:e2e": "npm run build:demo && node --import ./scripts/ts-resolve.ts --test \"test/e2e/*.e2e.ts\"",
     "perf": "node --import ./scripts/ts-resolve.ts bench/perf.ts",
     "build:demo": "node scripts/build-demo.ts",
     "demo": "npm run build:demo && node scripts/serve.ts",
     "format": "prettier --write \"**/*.{ts,json}\"",
     "format:check": "prettier --check \"**/*.{ts,json}\"",
-    "quality": "node --import ./scripts/ts-resolve.ts bench/quality.ts"
+    "quality": "node --import ./scripts/ts-resolve.ts bench/quality.ts",
+    "lint": "npx --yes oxlint@1.88.0 --deny-warnings src test scripts demo bench",
+    "deps": "node scripts/deps.ts",
+    "deps:check": "node scripts/deps.ts --check"
   },
   "author": "Philipp Kabala",
   "license": "MIT",
@@ -23,6 +27,7 @@
     "@types/node": "^25.9.9",
     "cytoscape": "^3.34.3",
     "esbuild": "^0.28.2",
+    "playwright-core": "^1.64.1",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   },

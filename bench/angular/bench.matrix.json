@@ -5,12 +5,11 @@
   "runs": [
     { "name": "cytoscape only", "plugins": [] },
     { "name": "plugins, no libavoid", "plugins": ["gridGuide", "expandCollapse", "htmlLabel"] },
-    { "name": "libavoid only", "plugins": ["libavoid"], "ports": "docking" },
-    { "name": "libavoid only, route every frame", "plugins": ["libavoid"], "ports": "docking", "dragRouteInterval": 0 },
-    { "name": "libavoid only, worker", "plugins": ["libavoid"], "ports": "docking", "worker": true },
-    { "name": "all, docking", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking" },
-    { "name": "all, docking, worker", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking", "worker": true },
-    { "name": "all, auto ports", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "auto" },
-    { "name": "all, docking, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "ports": "docking", "rerouteOnDrag": false }
+    { "name": "libavoid only", "plugins": ["libavoid"] },
+    { "name": "libavoid only, route every frame", "plugins": ["libavoid"], "dragRouteInterval": 0 },
+    { "name": "libavoid only, worker", "plugins": ["libavoid"], "worker": true },
+    { "name": "all", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"] },
+    { "name": "all, worker", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "worker": true },
+    { "name": "all, no drag routing", "plugins": ["libavoid", "gridGuide", "expandCollapse", "htmlLabel"], "rerouteOnDrag": false }
   ]
 }

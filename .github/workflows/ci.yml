@@ -25,5 +25,8 @@ jobs:
       - name: src/ compiles with the oldest supported TypeScript
         run: npx --yes -p typescript@5.0 tsc -p tsconfig.strict.json
       - run: npm run format:check
+      - run: npm run lint
+      - run: npm run deps:check
       - run: npm test
-      - run: npm run build:demo
+      - name: build the demo and drag in a real browser (the runner has Chrome)
+        run: npm run test:e2e

@@ -1,6 +1,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDockingPorts, EdgeRouter, loadLibavoid, simplify, spreadPorts } from '../src';
+import { EdgeRouter, loadLibavoid } from '../src';
+import { simplify } from '../src/postprocess/simplify';
 import type { Avoid, GraphEdge, GraphModel, GraphNode, Point, RoutingOptions } from '../src';
 import { box, segmentHitsRect } from './helpers';
 
@@ -28,7 +29,7 @@ test('orthogonal routes avoid obstacles and only use axis-aligned segments', () 
   }
 });
 
-test('auto ports start and end on the node border', () => {
+test('routes start and end on the node border', () => {
   const points = new EdgeRouter(avoid).route(obstacleModel).get('ab');
   assert.ok(points);
   const onBorder = (p: Point, node: GraphNode): boolean => {
@@ -42,9 +43,49 @@ test('auto ports start and end on the node border', () => {
   assert.ok(onBorder(points[points.length - 1], obstacleModel.nodes[1]));
 });
 
-test('polyline routes go around the obstacle', () => {
-  const points = new EdgeRouter(avoid, { routingType: 'polyline' }).route(obstacleModel).get('ab');
-  assert.ok(points && points.length >= 3, 'not a straight line through the wall');
+test('an endpoint-only node: its edges end on the side facing the other end, other edges cross it', () => {
+  const group: GraphNode = { id: 'group', x: 0, y: 100, width: 120, height: 80, obstacle: false };
+  const model: GraphModel = {
+    nodes: [...obstacleModel.nodes, group, { id: 'c', x: 0, y: 400, width: 40, height: 40 }],
+    edges: [
+      { id: 'group-b', source: 'group', target: 'b' },
+      { id: 'a-c', source: 'a', target: 'c' }, // straight down through the group
+    ],
+  };
+  const routes = new EdgeRouter(avoid).route(model);
+  const groupB = routes.get('group-b');
+  assert.ok(groupB, 'routed');
+  assert.deepEqual(groupB[0], { x: 60, y: 100 }, 'starts in the middle of the right side');
+  for (let i = 1; i < groupB.length; i++) {
+    assert.ok(!segmentHitsRect(groupB[i - 1], groupB[i], box(obstacleModel.nodes[2])), 'still avoids obstacles');
+  }
+  assert.equal(routes.get('a-c')?.length, 2, 'not an obstacle for other edges');
+});
+
+test('sourceSides / targetSides restrict the sides an edge ends at', () => {
+  const model: GraphModel = {
+    nodes: obstacleModel.nodes,
+    edges: [{ id: 'ab', source: 'a', target: 'b', sourceSides: ['bottom'], targetSides: ['top', 'bottom'] }],
+  };
+  const points = new EdgeRouter(avoid).route(model).get('ab');
+  assert.ok(points);
+  assert.equal(points[0].y, 20, 'leaves a at the bottom');
+  assert.equal(points[1].x, points[0].x, 'heading down');
+  assert.ok([-20, 20].includes(points[points.length - 1].y), 'ends at the top or bottom of b');
+});
+
+test('loadLibavoid() with another URL after the first load warns and reuses the instance', async () => {
+  const warnings: string[] = [];
+  const consoleWarn = console.warn;
+  console.warn = (message: string) => warnings.push(message);
+  try {
+    assert.equal(await loadLibavoid(), avoid);
+    assert.equal(warnings.length, 0, 'no URL: no warning');
+    assert.equal(await loadLibavoid('elsewhere/libavoid.wasm'), avoid);
+    assert.match(warnings[0] ?? '', /already loaded from the default URL, ignoring elsewhere\/libavoid\.wasm/);
+  } finally {
+    console.warn = consoleWarn;
+  }
 });
 
 test('loops and edges with a missing endpoint are skipped', () => {
@@ -66,95 +107,13 @@ test('unknown routing parameters and options are reported by name', () => {
   assert.throws(() => new EdgeRouter(avoid, badOption).route(obstacleModel), /unknown routing option "bogus"/);
 });
 
-test('instances do not share nested options with the defaults', () => {
-  const router = new EdgeRouter(avoid, {});
-  router.options.routingParameters.crossingPenalty = 1;
-  assert.equal(new EdgeRouter(avoid).options.routingParameters.crossingPenalty, undefined);
-});
-
-test('docking ports are stacked by edge width on the flow sides without overlap', () => {
-  const model: GraphModel = {
-    nodes: [
-      { id: 's', x: 0, y: 0, width: 40, height: 120 },
-      { id: 't1', x: 300, y: -100, width: 40, height: 60 },
-      { id: 't2', x: 300, y: 0, width: 40, height: 60 },
-      { id: 't3', x: 300, y: 100, width: 40, height: 60 },
-    ],
-    edges: [
-      { id: 'e3', source: 's', target: 't3', width: 30 },
-      { id: 'e1', source: 's', target: 't1', width: 10 },
-      { id: 'e2', source: 's', target: 't2', width: 20 },
-    ],
-  };
-  const options: Partial<RoutingOptions> = { ports: 'docking', flowDirection: 'right', portSpacing: 2 };
-  const ports = computeDockingPorts(model, options);
-  // sorted top -> bottom by target y: e1, e2, e3
-  const offsets = ['e1', 'e2', 'e3'].map((id) => (ports.get(id)?.source.offset ?? NaN) * 120);
-  assert.ok(offsets[0] < offsets[1] && offsets[1] < offsets[2]);
-  assert.ok(Math.abs(offsets[1] - offsets[0] - (5 + 2 + 10)) < 1e-9, 'e1/e2 touch with spacing');
-  assert.ok(Math.abs(offsets[2] - offsets[1] - (10 + 2 + 15)) < 1e-9, 'e2/e3 touch with spacing');
-
-  const routes = new EdgeRouter(avoid, options).route(model);
-  for (const [id, points] of routes) {
-    assert.equal(points[0].x, 20, `${id} leaves on the right side`);
-    assert.equal(points[points.length - 1].x, 280, `${id} enters on the left side`);
-  }
-  const e1 = routes.get('e1');
-  assert.ok(e1);
-  assert.ok(Math.abs(e1[0].y - (offsets[0] - 60)) < 1e-6, 'route starts at the computed port');
-});
-
-test('docking ports follow flowDirection and per-edge sides', () => {
-  const model: GraphModel = {
-    nodes: [
-      { id: 's', x: 0, y: 0, width: 60, height: 40 },
-      { id: 't', x: 0, y: 200, width: 60, height: 40 },
-    ],
-    edges: [
-      { id: 'down', source: 's', target: 't', width: 4 },
-      { id: 'side', source: 's', target: 't', width: 4, sourceSide: 'left', targetSide: 'right' },
-    ],
-  };
-  const ports = computeDockingPorts(model, { flowDirection: 'down' });
-  assert.deepEqual(
-    [ports.get('down')?.source.side, ports.get('down')?.target.side],
-    ['bottom', 'top'],
-    'flow direction sides',
-  );
-  assert.deepEqual([ports.get('side')?.source.side, ports.get('side')?.target.side], ['left', 'right']);
-
-  const routes = new EdgeRouter(avoid, { ports: 'docking', flowDirection: 'down' }).route(model);
-  const side = routes.get('side');
-  assert.ok(side);
-  assert.equal(side[0].x, -30, 'leaves s on the left');
-  assert.equal(side[side.length - 1].x, 30, 'enters t on the right');
-});
-
-test('docking ports are squeezed when the edges do not fit onto a side', () => {
-  const model: GraphModel = {
-    nodes: [
-      { id: 's', x: 0, y: 0, width: 40, height: 20 },
-      { id: 't', x: 200, y: 0, width: 40, height: 20 },
-    ],
-    edges: [
-      { id: 'a', source: 's', target: 't', width: 30 },
-      { id: 'b', source: 's', target: 't', width: 30 },
-    ],
-  };
-  const ports = computeDockingPorts(model, { flowDirection: 'right', portSpacing: 0 });
-  for (const port of ports.values()) assert.ok(port.source.offset >= 0 && port.source.offset <= 1);
-  assert.notEqual(ports.get('a')?.source.offset, ports.get('b')?.source.offset);
-});
-
-test('an unknown flowDirection is reported', () => {
-  const options = { flowDirection: 'sideways' } as unknown as Partial<RoutingOptions>;
-  assert.throws(() => computeDockingPorts(obstacleModel, options), /unknown flowDirection "sideways"/);
-});
-
-test('spreadPorts centres the stack and keeps the spacing', () => {
-  // widths 10 + 20 with spacing 2 = 32 px, centred on a 100 px side: starts at 34
-  assert.deepEqual(spreadPorts([10, 20], 100, 2), [0.39, 0.56]);
-  assert.deepEqual(spreadPorts([10], 0, 2), [0.5], 'empty side');
+test('options are checked on creation and frozen', () => {
+  const router = new EdgeRouter(avoid, { routingParameters: { crossingPenalty: 1 } });
+  assert.ok(Object.isFrozen(router.options) && Object.isFrozen(router.options.routingParameters));
+  assert.equal(new EdgeRouter(avoid).options.routingParameters.crossingPenalty, undefined, 'not shared');
+  assert.throws(() => new EdgeRouter(avoid, { edgeSpacing: -1 }), /edgeSpacing must be a number >= 0/);
+  const bogus = { routingParameters: { bogus: 1 } } as unknown as Partial<RoutingOptions>;
+  assert.throws(() => new EdgeRouter(avoid, bogus), /unknown routing parameter "bogus"/);
 });
 
 test('simplify rounds float noise and drops duplicate and straight-run points', () => {
@@ -194,59 +153,10 @@ test('rebuild performance for a mid-sized flow graph', () => {
       edges.push({ id: `e${k++}`, source, target: `n${Math.min(7, col + 2)}_${(row + 5) % 8}`, width: 2 + (k % 7) });
     }
   }
-  for (const ports of ['auto', 'docking'] as const) {
-    const start = performance.now();
-    const routes = new EdgeRouter(avoid, { ports }).route({ nodes, edges });
-    const ms = performance.now() - start;
-    console.log(`  ${ports}: ${nodes.length} nodes, ${routes.size} edges routed in ${ms.toFixed(1)} ms`);
-    assert.equal(routes.size, edges.filter((e) => e.source !== e.target).length);
-    assert.ok(ms < 2000, `fast enough for live re-routing (${ms.toFixed(0)} ms)`);
-  }
-});
-
-test('docking ports on a top / bottom side are ordered by x, whatever the flow direction', () => {
-  // flowDirection 'right', but all edges leave s at the bottom towards targets below, left to right
-  const model: GraphModel = {
-    nodes: [
-      { id: 's', x: 0, y: 0, width: 120, height: 40 },
-      { id: 'left', x: -200, y: 300, width: 40, height: 40 },
-      { id: 'middle', x: 0, y: 200, width: 40, height: 40 },
-      { id: 'right', x: 200, y: 100, width: 40, height: 40 },
-    ],
-    edges: ['right', 'left', 'middle'].map((target) => ({
-      id: target,
-      source: 's',
-      target,
-      width: 6,
-      sourceSide: 'bottom' as const,
-      targetSide: 'top' as const,
-    })),
-  };
-  const ports = computeDockingPorts(model, { flowDirection: 'right' });
-  const offsets = ['left', 'middle', 'right'].map((id) => ports.get(id)?.source.offset ?? NaN);
-  assert.ok(offsets[0] < offsets[1] && offsets[1] < offsets[2], `ordered left to right: ${offsets}`);
-});
-
-test("flowDirection 'auto' docks every edge on the sides its nodes face each other with", () => {
-  const model: GraphModel = {
-    nodes: [
-      { id: 'a', x: 0, y: 0, width: 80, height: 40 },
-      { id: 'back', x: -300, y: 20, width: 80, height: 40 }, // to the left: against a rightward flow
-      { id: 'below', x: 10, y: 250, width: 80, height: 40 },
-    ],
-    edges: [
-      { id: 'a-back', source: 'a', target: 'back', width: 4 },
-      { id: 'a-below', source: 'a', target: 'below', width: 4 },
-    ],
-  };
-  const ports = computeDockingPorts(model, { flowDirection: 'auto' });
-  const sides = (id: string) => [ports.get(id)?.source.side, ports.get(id)?.target.side];
-  assert.deepEqual(sides('a-back'), ['left', 'right']);
-  assert.deepEqual(sides('a-below'), ['bottom', 'top']);
-
-  const back = new EdgeRouter(avoid, { ports: 'docking', flowDirection: 'auto' }).route(model).get('a-back');
-  assert.ok(back);
-  assert.equal(back[0]!.x, -40, 'leaves a on the left');
-  assert.equal(back[back.length - 1]!.x, -260, 'enters back on the right, without a loop around a');
-  assert.ok(back.every((point) => point.x <= -40 && point.x >= -260));
+  const start = performance.now();
+  const routes = new EdgeRouter(avoid).route({ nodes, edges });
+  const ms = performance.now() - start;
+  console.log(`  ${nodes.length} nodes, ${routes.size} edges routed in ${ms.toFixed(1)} ms`);
+  assert.equal(routes.size, edges.filter((e) => e.source !== e.target).length);
+  assert.ok(ms < 2000, `fast enough for live re-routing (${ms.toFixed(0)} ms)`);
 });

@@ -1,4 +1,5 @@
-// Turns routes into Cytoscape `segments` edge styles and applies them.
+// Turns routes into Cytoscape `segments` edge styles and back; EdgeStyler
+// (edge-styler.ts) applies them.
 //
 // With `edge-distances: endpoints` and manual `source-endpoint` /
 // `target-endpoint`, Cytoscape places segment point i at
@@ -6,8 +7,7 @@
 // where S / T are the manual endpoints (start / end below). routeToEdgeStyle()
 // inverts exactly that: weight w_i and distance d_i of every inner route point.
 
-import type { Core } from 'cytoscape';
-import type { Point } from './libavoid';
+import type { Point } from '../shared/geometry';
 
 export interface EdgeSegmentStyle {
   'curve-style': 'segments' | 'round-segments';
@@ -158,74 +158,4 @@ export function edgeStyleToPoints(
     return { x: start.x + weight * along.x + distance * normal.x, y: start.y + weight * along.y + distance * normal.y };
   });
   return [start, ...inner, end];
-}
-
-/** Applies routes to Cytoscape edges as style bypasses, and removes them again. */
-export class EdgeStyler {
-  private readonly cy: Core;
-  /** Edge id -> element and style last applied to it, to skip edges whose route did not change. */
-  private readonly applied = new Map<string, { element: unknown; style: EdgeSegmentStyle; styleKey: string }>();
-
-  constructor(cy: Core) {
-    this.cy = cy;
-  }
-
-  /**
-   * Styles every routed edge and restores the edges that are no longer routed.
-   *
-   * @param nodePositions positions of the nodes when the routes were computed. The
-   *   edge ends are anchored relative to them, so routes that arrive late (from a
-   *   worker) still start and end at their nodes if those moved in the meantime.
-   *   Missing nodes use their current position.
-   */
-  apply(
-    routes: ReadonlyMap<string, readonly Point[]>,
-    options: Partial<EdgeStyleOptions> = {},
-    nodePositions: ReadonlyMap<string, Point> = new Map(),
-  ): void {
-    this.cy.batch(() => {
-      for (const edgeId of [...this.applied.keys()]) {
-        if (!routes.has(edgeId)) this.restore(edgeId);
-      }
-      for (const [edgeId, points] of routes) this.applyRoute(edgeId, points, options, nodePositions);
-    });
-  }
-
-  /** Restores the stylesheet style of every edge styled so far. */
-  clear(): void {
-    this.cy.batch(() => {
-      for (const edgeId of [...this.applied.keys()]) this.restore(edgeId);
-    });
-  }
-
-  private applyRoute(
-    edgeId: string,
-    points: readonly Point[],
-    options: Partial<EdgeStyleOptions>,
-    nodePositions: ReadonlyMap<string, Point>,
-  ): void {
-    const edge = this.cy.getElementById(edgeId);
-    if (!edge.isEdge()) return; // removed since the routes were computed
-    const source = edge.source();
-    const target = edge.target();
-    const sourceCentre = nodePositions.get(source.id()) ?? source.position();
-    const targetCentre = nodePositions.get(target.id()) ?? target.position();
-    const style = routeToEdgeStyle(points, sourceCentre, targetCentre, options);
-    if (!style) return;
-    // every style update is costly and, with compound nodes, fires 'style' on all nodes
-    const styleKey = JSON.stringify(style);
-    const previous = this.applied.get(edgeId);
-    if (previous && previous.element === edge[0] && previous.styleKey === styleKey) return;
-    // e.g. corner radii or label margins that the new style does not set any more
-    const leftOver = previous ? STYLE_PROPS.filter((prop) => prop in previous.style && !(prop in style)) : [];
-    if (leftOver.length) edge.removeStyle(leftOver.join(' '));
-    edge.style(style);
-    this.applied.set(edgeId, { element: edge[0], style, styleKey });
-  }
-
-  private restore(edgeId: string): void {
-    const edge = this.cy.getElementById(edgeId);
-    if (edge.nonempty()) edge.removeStyle(STYLE_PROPS.join(' '));
-    this.applied.delete(edgeId);
-  }
 }

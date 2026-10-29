@@ -1,0 +1,10 @@
+{
+  // `npm run lint`; oxlint's default rules (correctness) plus these settings
+  "ignorePatterns": ["demo/build/**", "bench/angular/**"],
+  "rules": {
+    // the loops delete from the collection they iterate, the copies make that obvious
+    "unicorn/no-useless-spread": "off",
+    // load.ts: makes the libavoid-js stub typings available in projects that copy src/
+    "typescript/triple-slash-reference": "off"
+  }
+}

@@ -1,13 +1,15 @@
 // Route quality on the Angular bench graphs and the demo graph: overlapping
 // edges, edges through nodes, crossings, bends and length.
 //
-//   npm run quality                         # all graphs, auto and docking ports
-//   npm run quality -- M '[{"ports":"docking","portSpacing":4}]'
-import { loadLibavoid } from '../src/libavoid';
-import { EdgeRouter } from '../src/routing';
-import type { GraphModel, RoutingOptions } from '../src/routing';
-import type { Point } from '../src/libavoid';
+//   npm run quality                         # all graphs, default options
+//   npm run quality -- M '[{},{"edgeSpacing":4}]'
+import { loadLibavoid } from '../src';
+import { EdgeRouter } from '../src';
+import type { GraphModel, RoutingOptions } from '../src';
+import type { Point } from '../src';
 import { buildGraph, NODE_H, NODE_W, SIZES } from './angular/src/app/graph';
+import { COLLAPSIBLE_GROUPS, plantModel } from '../demo/plant-graph';
+import { smallModel } from '../demo/small-graph';
 
 export interface Quality {
   /** Pairs of parallel segments of different edges whose strokes touch, and their shared length (px). */
@@ -146,57 +148,26 @@ export function benchModel(sizeName: string): GraphModel {
   return model;
 }
 
-/** The material flow of demo/main.ts (node size 90 x 70, edge width = quantity). */
-export function demoModel(): GraphModel {
-  const nodes: Array<[string, number, number]> = [
-    ['lager', 0, 150],
-    ['zukauf', 0, 400],
-    ['saege', 260, 80],
-    ['fraese', 260, 260],
-    ['drehen', 260, 440],
-    ['montage', 540, 200],
-    ['lack', 540, 420],
-    ['versand', 820, 220],
-    ['schrott', 820, 460],
-    ['qs', 400, 330],
-  ];
-  const flows: Array<[string, string, number]> = [
-    ['lager', 'saege', 18],
-    ['lager', 'fraese', 10],
-    ['zukauf', 'drehen', 12],
-    ['zukauf', 'montage', 6],
-    ['saege', 'montage', 14],
-    ['saege', 'schrott', 3],
-    ['fraese', 'montage', 8],
-    ['fraese', 'lack', 2],
-    ['drehen', 'lack', 9],
-    ['drehen', 'schrott', 2],
-    ['montage', 'versand', 22],
-    ['lack', 'versand', 9],
-    ['montage', 'lack', 4],
-  ];
-  return {
-    nodes: nodes.map(([id, x, y]) => ({ id, x, y, width: 90, height: 70 })),
-    edges: flows.map(([source, target, width]) => ({ id: `${source}-${target}`, source, target, width })),
-  };
-}
-
 if (import.meta.main) {
-  const [only, variantsJson = '[{"ports":"auto"},{"ports":"docking"}]'] = process.argv.slice(2);
+  const [only, variantsJson = '[{}]'] = process.argv.slice(2);
   const variants: Array<Partial<RoutingOptions>> = JSON.parse(variantsJson);
   const graphs: Array<[string, GraphModel]> = [
-    ['demo', demoModel()],
+    ['demo', smallModel()],
+    ['plant', plantModel()],
+    ['plant collapsed', plantModel({}, new Set(COLLAPSIBLE_GROUPS))],
     ['S', benchModel('S')],
     ['M', benchModel('M')],
   ];
   const avoid = await loadLibavoid();
-  console.log('graph  options                                    overlaps (px)  node hits  crossings  bends  length');
+  console.log(
+    'graph            options                                    overlaps (px)  node hits  crossings  bends  length',
+  );
   for (const [name, model] of graphs) {
     if (only && only !== name) continue;
     for (const variant of variants) {
       const q = measure(model, new EdgeRouter(avoid, variant).route(model));
       console.log(
-        `${name.padEnd(6)} ${JSON.stringify(variant).padEnd(42)} ${`${q.overlaps} (${q.overlapLength})`.padStart(13)}` +
+        `${name.padEnd(16)} ${JSON.stringify(variant).padEnd(42)} ${`${q.overlaps} (${q.overlapLength})`.padStart(13)}` +
           `  ${String(q.nodeHits).padStart(9)}  ${String(q.crossings).padStart(9)}  ${String(q.bends).padStart(5)}  ${q.length}`,
       );
     }

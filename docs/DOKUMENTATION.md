@@ -6,8 +6,7 @@ Version 0.1.0 · für Cytoscape.js ≥ 3.2 · libavoid-js 0.5.0-beta.5
 [libavoid](https://www.adaptagrams.org/documentation/libavoid.html) routet,
 einer C++-Bibliothek für hindernisvermeidendes Kantenrouting. Sie läuft als
 WebAssembly im Browser und in Node.js. Typischer Einsatz sind Materialfluss-
-und Prozessdiagramme: Pfeile im Taxi-Stil, die um Knoten herumführen und an
-eigenen Andockpunkten (Docking Ports) an den Knoten ansetzen.
+und Prozessdiagramme: Pfeile im Taxi-Stil, die um Knoten herumführen.
 
 ---
 
@@ -34,25 +33,17 @@ eigenen Andockpunkten (Docking Ports) an den Knoten ansetzen.
 
 ## 1. Funktionsumfang
 
-- **Orthogonales Routing** (nur waagerechte und senkrechte Segmente) oder
-  **Polyline-Routing** (beliebige Winkel). Knoten werden als Hindernisse
-  umfahren.
-- **Zwei Port-Modi:**
-  - `auto`: Jeder Knoten hat einen Anschlusspunkt pro Seite, libavoid wählt
-    die günstigste Seite.
-  - `docking`: Jede Kante bekommt einen eigenen Andockpunkt (Docking Port) an
-    der Ausgangsseite der Quelle und der Eingangsseite des Ziels. Die Ports
-    werden nach Kantenbreite gestapelt und nach der Lage des Gegenknotens
-    sortiert, damit sich Kanten direkt am Knoten nicht kreuzen.
+- **Orthogonales Routing** (nur waagerechte und senkrechte Segmente). Knoten
+  werden als Hindernisse umfahren.
+- **Anschlusspunkte:** Jeder Knoten hat einen Anschlusspunkt in der Mitte
+  jeder Seite, libavoid wählt die günstigste Seite und schiebt die Kantenenden
+  daran auseinander (siehe [10.2](#102-anschlusspunkte)).
 - **Nudging:** Parallel laufende Segmente werden auseinandergeschoben, der
   Abstand richtet sich automatisch nach der breitesten Kante.
 - **Keine übereinanderliegenden Kanten:** Wo libavoid viele Kanten in eine
   schmale Lücke zwischen Knoten legt, werden sie nach ihrer Breite
   auseinandergeschoben, und Kanten, die nicht hineinpassen, laufen durch die
   nächste breitere Lücke (siehe [10.4](#104-überlappungen-auflösen)).
-- **`flowDirection: 'auto'`:** Jede Kante dockt an den Seiten an, mit denen
-  sich ihre Knoten gegenüberstehen; Kanten gegen den Hauptfluss laufen nicht
-  mehr um ihre Knoten herum.
 - **Beschriftung auf dem längsten Segment** statt auf einer Ecke, optional.
 - **Abgerundete Ecken**, optional.
 - **Live-Routing:** Beim Hinzufügen, Entfernen, Verschieben und bei
@@ -70,13 +61,14 @@ eigenen Andockpunkten (Docking Ports) an den Knoten ansetzen.
 ```
 cytoscape-libavoid/
 ├── src/                             das Plugin (TypeScript), zum Kopieren in andere Projekte
-│   ├── index.ts                     Plugin-Wrapper: Registrierung, cy.libavoid(), Klasse LibavoidRouting
-│   ├── routing.ts                   Routing-Logik: Klasse EdgeRouter, Docking Ports, simplify
-│   ├── libavoid.ts                  libavoid-Anbindung: loadLibavoid, Klasse LibavoidRouter
-│   ├── edge-style.ts                Route → Cytoscape-Style, Klasse EdgeStyler
-│   ├── separation.ts                übereinanderliegende Kanten auflösen, Umwege, Qualitätsmaße
+│   ├── index.ts                     öffentliche API: Registrierung von cy.libavoid(), Exporte für Anwendungen
 │   ├── routing.worker.ts            Einstieg für das optionale Routing im Web Worker
-│   ├── libavoid-js.d.ts             Ersatz für die fehlerhaften Typen von libavoid-js
+│   ├── shared/                      Basis für alle Ordner: Geometrie, Datenmodell, Meldungen und Prüfung der Optionen
+│   ├── cytoscape-adapter/           einziger Ordner, der Cytoscape kennt: Klasse LibavoidRouting, Optionen, Route ↔ Style, Klasse EdgeStyler
+│   ├── routing/                     Routing-Logik: Klasse EdgeRouter, Schnittstelle RoutingBackend, Klasse LocalRouter
+│   ├── postprocess/                 Nachbearbeitung auf einer RouteGeometry: simplify, Auseinanderschieben, Umwege, Qualität
+│   ├── libavoid/                    libavoid-Anbindung: loadLibavoid, Klasse LibavoidSession, Typen
+│   ├── worker/                      Web Worker: Nachrichten, Klasse WorkerRouter
 │   └── README.md                    Einbindungsanleitung (englisch)
 ├── demo/
 │   ├── index.html                   Interaktive Demo (Materialfluss)
@@ -91,7 +83,7 @@ cytoscape-libavoid/
 ├── scripts/build-demo.ts            bündelt die Demo nach demo/build/
 ├── scripts/ts-resolve.ts            lässt Node.js die Importe ohne .ts-Endung auflösen (Tests, perf)
 ├── scripts/serve.ts                 Mini-Webserver für die Demo
-├── test/                            Tests (node:test): routing, edge-style, plugin + helpers.ts
+├── test/                            Tests (node:test): routing, route-style, plugin + helpers.ts
 ├── .github/workflows/               ci.yml (Typprüfung, Format, Tests), pages.yml (Demo)
 ├── tsconfig.json                    Typprüfung (npm run typecheck) mit üblichen App-Einstellungen
 ├── LICENSE                          MIT-Lizenz des Plugin-Codes
@@ -195,7 +187,7 @@ const cy = cytoscape({
     {
       selector: 'edge',
       style: {
-        width: 'data(menge)',            // Breite = Menge, wird für das Stapeln genutzt
+        width: 'data(menge)',            // Breite = Menge, bestimmt den Abstand paralleler Kanten
         'line-color': '#d9822b',
         'target-arrow-shape': 'triangle',
         'target-arrow-color': '#d9822b',
@@ -206,8 +198,6 @@ const cy = cytoscape({
 });
 
 const routing = cy.libavoid({
-  ports: 'docking',
-  flowDirection: 'right',
   cornerRadius: 6,
   wasmUrl: '/libavoid.wasm',
 });
@@ -224,15 +214,12 @@ Alle Optionen sind optional. Sie werden beim Aufruf von `cy.libavoid(options)`
 
 | Option | Typ | Standard | Beschreibung |
 |---|---|---|---|
-| `routingType` | `'orthogonal' \| 'polyline'` | `'orthogonal'` | `orthogonal`: nur waagerechte und senkrechte Segmente. `polyline`: beliebige Winkel. |
-| `ports` | `'auto' \| 'docking'` | `'auto'` | `auto`: ein gemeinsamer Anschluss pro Knotenseite, libavoid wählt die Seite. `docking`: eigener Docking Port je Kantenende, gestapelt nach Breite (siehe [10.2](#102-docking-ports)). |
-| `flowDirection` | `'right' \| 'left' \| 'down' \| 'up' \| 'auto'` | `'right'` | Nur bei `docking`: Hauptflussrichtung. Bei `right` verlassen Kanten die Quelle rechts und erreichen das Ziel links. `auto`: für jede Kante die Seiten, mit denen sich ihre Knoten gegenüberstehen (auf der Achse mit dem größeren Abstand). |
-| `portSpacing` | `number` (px) | `2` | Nur bei `docking`: Abstand zwischen benachbarten Ports an einer Knotenseite. |
+| `edgeSpacing` | `number` (px) | `2` | Abstand zwischen benachbarten parallelen Kanten. |
 | `shapeBufferDistance` | `number` (px) | `12` | Mindestabstand der Routen zu Knoten. |
-| `idealNudgingDistance` | `number \| 'auto'` | `'auto'` | Abstand zwischen parallel laufenden Segmenten. `auto` = Breite der breitesten Kante + `portSpacing`, mindestens 4. |
-| `nudgeConnectedSegments` | `boolean \| 'auto'` | `'auto'` | Auch Segmente auseinanderschieben, die direkt an einem Knoten enden. `auto` = an bei `ports: 'auto'`, aus bei `docking` (dort liegen die Ports schon fest). |
-| `separateOverlaps` | `boolean` | `true` | Nur `orthogonal`: Segmente, die libavoid übereinanderlegt, nach ihrer Breite auseinanderschieben, siehe [10.4](#104-überlappungen-auflösen). |
-| `detourCrowded` | `boolean` | `true` | Nur `orthogonal`: Kanten, die nicht in eine schmale Lücke passen, durch eine breitere führen (zweiter libavoid-Lauf, etwa doppelte Zeit), siehe [10.4](#104-überlappungen-auflösen). |
+| `idealNudgingDistance` | `number \| 'auto'` | `'auto'` | Abstand zwischen parallel laufenden Segmenten. `auto` = Breite der breitesten Kante + `edgeSpacing`, mindestens 4. |
+| `nudgeConnectedSegments` | `boolean` | `true` | Auch Segmente auseinanderschieben, die direkt an einem Knoten enden, damit sich Kanten am gemeinsamen Anschlusspunkt nicht überdecken. |
+| `separateOverlaps` | `boolean` | `true` | Segmente, die libavoid übereinanderlegt, nach ihrer Breite auseinanderschieben, siehe [10.4](#104-überlappungen-auflösen). |
+| `detourCrowded` | `boolean` | `true` | Kanten, die nicht in eine schmale Lücke passen, durch eine breitere führen (zweiter libavoid-Lauf, etwa doppelte Zeit), siehe [10.4](#104-überlappungen-auflösen). |
 | `routingParameters` | `object` | `{}` | Rohe libavoid-`RoutingParameter`, z. B. `{ crossingPenalty: 200, segmentPenalty: 50 }`. Unbekannte Namen werfen einen Fehler. |
 | `routingOptions` | `object` | `{}` | Rohe libavoid-`RoutingOption`, z. B. `{ nudgeSharedPathsWithCommonEndPoint: true }`. Unbekannte Namen werfen einen Fehler. |
 
@@ -257,9 +244,10 @@ Mögliche `routingOptions` (libavoid):
 | Option | Typ | Standard | Beschreibung |
 |---|---|---|---|
 | `edges` | Selektor | `'edge'` | Welche Kanten geroutet werden. Andere Kanten bleiben unverändert. |
-| `obstacles` | Selektor | `'node:childless'` | Welche Knoten Hindernisse und mögliche Endpunkte sind. Compound-Eltern zählen standardmäßig nicht dazu. |
+| `obstacles` | Selektor | `'node:childless'` | Welche Knoten Hindernisse sind. Compound-Eltern zählen standardmäßig nicht dazu. Kanten zu anderen sichtbaren Knoten (z. B. Compound-Knoten) werden trotzdem geroutet: Sie enden in der Mitte der Seite, die zum anderen Ende zeigt, und andere Kanten dürfen diese Knoten kreuzen. Kanten zwischen einem Compound-Knoten und einem Knoten darin werden nicht geroutet. |
 | `includeLabels` | `boolean` | `false` | Knotenbeschriftungen gehören mit zum Hindernis. |
-| `edgeWidth` | `(edge) => number` | `e => e.numericStyle('width')` | Liefert die Breite einer Kante für Stapeln und Nudging. Nützlich, wenn die angezeigte Breite nicht der Fluss-Breite entsprechen soll. |
+| `edgeWidth` | `(edge) => number` | `e => e.numericStyle('width')` | Liefert die Breite einer Kante für Nudging und Auseinanderschieben. Nützlich, wenn die angezeigte Breite nicht der Fluss-Breite entsprechen soll. |
+| `edgeSides` | `(edge) => { source?, target? }` | – | Erlaubte Seiten je Kantenende: eine Seite (`'top'`, `'right'`, `'bottom'`, `'left'`) oder eine Liste. Fehlt eine Angabe, wählt libavoid unter allen vier. Beispiel Fluss von links nach rechts: `e => ({ source: 'right', target: 'left' })`. |
 | `cornerRadius` | `number` (px) | `0` | `0` = spitze Ecken (`curve-style: segments`), `> 0` = abgerundete Ecken (`round-segments`). |
 | `labelPosition` | `'middle' \| 'longest-segment'` | `'middle'` | `middle`: wo Cytoscape die Beschriftung hinsetzt, bei einer ungeraden Zahl von Knicken auf eine Ecke. `longest-segment`: Mitte des längsten Segments (eines waagerechten, wenn es mindestens halb so lang ist); ersetzt `text-margin-x/y` der Kanten. |
 
@@ -267,9 +255,11 @@ Mögliche `routingOptions` (libavoid):
 
 | Option | Typ | Standard | Beschreibung |
 |---|---|---|---|
-| `live` | `boolean` | `true` | Bei Änderungen am Graphen automatisch neu routen. Bei `false` routen Sie selbst mit `routing.route()`. |
+| `live` | `boolean` | `true` | Bei Änderungen am Graphen automatisch neu routen. Bei `false` routen Sie selbst mit `routing.refresh()`. |
 | `rerouteOnDrag` | `boolean` | `true` | Nur bei `live`: auch während des Ziehens routen. Bei `false` erst beim Loslassen. |
 | `dragRouteInterval` | `number` (ms) `\| 'auto'` | `'auto'` | Nur bei `rerouteOnDrag`: Mindestpause zwischen zwei Läufen während des Ziehens. `auto` = so lange wie der letzte Lauf gedauert hat; das Routing belegt dann höchstens etwa die Hälfte der Zeit und das Ziehen bleibt flüssig. `0` = in jedem Frame routen. Beim Loslassen wird immer die Endposition geroutet. |
+| `dragRouteDelay` | `number` (ms) | `0` | Nur bei `rerouteOnDrag`: erst routen, wenn die gezogenen Knoten so lange ruhen, statt während der Bewegung. `0` = aus. Beim Loslassen wird sofort geroutet. |
+| `hideEdgesOnDrag` | `boolean` | `false` | Kanten gezogener Knoten ab der ersten Bewegung ausblenden (`line-opacity` und `text-opacity` 0), bis eine Route für die neue Position anliegt, statt veraltete Routen zu zeigen. Passt zu `dragRouteDelay` oder `rerouteOnDrag: false`. Eigene Bypässe dieser beiden Eigenschaften kommen beim Einblenden zurück; welche, die während des Ausblendens gesetzt werden, gehen verloren. |
 
 ### Laden
 
@@ -281,20 +271,11 @@ Mögliche `routingOptions` (libavoid):
 
 ## 7. Daten an Knoten und Kanten
 
-| Feld | Element | Werte | Wirkung |
-|---|---|---|---|
-| `data(sourceSide)` | Kante | `'top' \| 'right' \| 'bottom' \| 'left'` | Nur bei `docking`: Seite, an der die Kante die Quelle verlässt. Überschreibt `flowDirection`. |
-| `data(targetSide)` | Kante | wie oben | Nur bei `docking`: Seite, an der die Kante das Ziel erreicht. |
-
-Beispiel: ein Rücklauf, der oben aus dem Knoten austritt und oben wieder
-eintritt.
-
-```js
-{ data: { id: 'ruecklauf', source: 'qs', target: 'saege', sourceSide: 'top', targetSide: 'top' } }
-```
-
-Sonst liest das Plugin nur Geometrie (Bounding Box, Position) und die
-Kantenbreite (über `edgeWidth`).
+Das Plugin liest keine eigenen Datenfelder, nur Geometrie (Bounding Box,
+Position), die Kantenbreite (über `edgeWidth`) und die erlaubten Seiten (über
+`edgeSides`). Ohne `edgeSides` wählt libavoid die Seite, an der eine Kante einen
+Knoten verlässt oder erreicht. Datenfelder lassen sich über diese Funktionen
+anbinden, z. B. `edgeSides: (e) => ({ source: e.data('ausgang') })`.
 
 ## 8. API-Referenz
 
@@ -325,25 +306,19 @@ Wird normalerweise über `cy.libavoid()` erzeugt. Direkt geht es mit
 | Eigenschaft | Typ | Beschreibung |
 |---|---|---|
 | `ready` | `Promise<LibavoidRouting>` | Erfüllt sich, sobald libavoid geladen ist und der erste Routing-Lauf fertig ist. Wird abgelehnt, wenn die `.wasm` nicht geladen werden kann oder der erste Lauf fehlschlägt. |
-| `options` | `object` | Aktuelle Optionen (Standardwerte und eigene Werte zusammengeführt). Nur lesen, ändern über `setOptions()`. |
+| `options` | `object` | Aktuelle Optionen (Standardwerte und eigene Werte zusammengeführt), eingefroren. Ändern über `setOptions()`. |
 | `routes` | `Map<string, Point[]>` | Ergebnis des letzten Laufs: Kanten-ID → Punkte. |
 | `cy` | Core | Die zugehörige Cytoscape-Instanz. |
 
 `Point` ist `{ x: number, y: number }` in Modellkoordinaten. Der erste Punkt
 liegt am Rand der Quelle, der letzte am Rand des Ziels.
 
-#### `route()` → `Map<string, Point[]>`
-
-Routet alle passenden Kanten sofort und synchron, setzt die Styles und löst
-`avoidrouted` aus. Wirft einen Fehler, wenn `ready` noch nicht erfüllt ist,
-und ist mit `worker` nicht verfügbar (dort `refresh()` nehmen).
-Bei `live: true` müssen Sie `route()` normalerweise nicht selbst aufrufen.
-
 #### `refresh()` → `Promise<Map<string, Point[]>>`
 
-Wie `route()`, aber asynchron und damit auch mit `worker` nutzbar. Läuft
-gerade eine Anfrage im Worker, wartet `refresh()` auf eine neue mit dem
-aktuellen Stand. Fehler lehnen das Promise ab.
+Routet alle passenden Kanten, setzt die Styles und löst `avoidrouted` aus, im
+Haupt-Thread oder im Worker. Läuft gerade ein Lauf, wartet `refresh()` auf
+einen neuen mit dem aktuellen Stand. Fehler lehnen das Promise ab. Bei
+`live: true` müssen Sie `refresh()` normalerweise nicht selbst aufrufen.
 
 #### `scheduleRoute()`
 
@@ -363,13 +338,15 @@ const laenge = pts.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - pts[i].x, p
 
 #### `setOptions(options)` → `this`
 
-Führt die übergebenen Optionen mit den aktuellen zusammen und routet sofort
-neu. Ein Wechsel von `live` bindet die Event-Listener an oder löst sie.
-`wasmUrl`, `avoidLib` und `worker` wirken nach dem Erzeugen nicht mehr. Mit
-`worker` kommen Fehler als Event `avoiderror`, sonst wirft `setOptions()`.
+Führt die übergebenen Optionen mit den aktuellen zusammen, prüft sie und
+routet neu. Ungültige Optionen (z. B. ein negativer Abstand oder ein
+unbekannter libavoid-Parameter) wirft `setOptions()` sofort; Fehler beim
+Routen kommen als Event `avoiderror`. Ein Wechsel von `live` bindet die
+Event-Listener an oder löst sie. `wasmUrl`, `avoidLib` und `worker` wirken nach
+dem Erzeugen nicht mehr.
 
 ```js
-routing.setOptions({ ports: 'auto', cornerRadius: 0 });
+routing.setOptions({ shapeBufferDistance: 8, cornerRadius: 0 });
 ```
 
 #### `model()` → `{ nodes, edges }`
@@ -388,32 +365,30 @@ der Anwendung). `cy.destroy()` beendet das Routing automatisch mit.
 
 ```ts
 import cytoscapeLibavoid, {
-  LibavoidRouting, defaults, loadLibavoid,
-  EdgeRouter, EdgeStyler, LibavoidRouter,
-  computeDockingPorts, spreadPorts, simplify,
-  routeToEdgeStyle, edgeStyleToPoints,
+  LibavoidRouting, defaults,
+  loadLibavoid, EdgeRouter, defaultRoutingOptions, routeQuality,
+  WorkerRouter,
 } from './cytoscape-libavoid';
 ```
 
 | Export | Datei | Beschreibung |
 |---|---|---|
 | `default` | `index.ts` | Registrierungsfunktion für `cytoscape.use()` |
-| `LibavoidRouting` | `index.ts` | Klasse hinter `cy.libavoid()`, siehe 8.3 |
-| `defaults` | `index.ts` | Standardoptionen (eingefroren) |
-| `EdgeRouter` | `routing.ts` | Routet ein Datenmodell ohne Cytoscape, siehe 8.5 |
-| `WorkerRouter` | `routing.ts` | Asynchrones Gegenstück zu `EdgeRouter`: schickt Anfragen an einen Worker mit `routing.worker.ts` (`route()`, `busy`, `dispose()`) |
-| `computeDockingPorts(model, options)` | `routing.ts` | Berechnet nur die Docking Ports, siehe 8.5 |
-| `spreadPorts(widths, sideLength, spacing)` | `routing.ts` | Verteilt Ports gegebener Breite auf einer Seite, liefert die Mitten als Anteil 0–1 |
-| `simplify(points)` | `routing.ts` | Rundet Koordinaten auf 3 Nachkommastellen und entfernt doppelte und kollineare Punkte |
-| `loadLibavoid(wasmUrl?)` → `Promise<Avoid>` | `libavoid.ts` | Lädt libavoid einmalig und gibt die Instanz zurück. Weitere Aufrufe liefern dasselbe Promise. Nach einem Fehler wird beim nächsten Aufruf neu versucht. |
-| `LibavoidRouter` | `libavoid.ts` | Dünne Hülle um die libavoid-API (Formen, Pins, Verbinder) inkl. Speicherfreigabe; Grundlage von `EdgeRouter` |
-| `EdgeStyler` | `edge-style.ts` | Setzt Routen als Style-Bypass auf Cytoscape-Kanten (`apply(routes, { cornerRadius, labelPosition }, nodePositions?)`) und entfernt sie wieder (`clear`) |
-| `routeToEdgeStyle(points, sourceCentre, targetCentre, { cornerRadius, labelPosition }?)` | `edge-style.ts` | Wandelt eine Route in ein Cytoscape-Style-Objekt um, siehe 10.3 |
-| `labelOffset(points, segmentPoints)` | `edge-style.ts` | Verschiebung der Beschriftung von Cytoscapes Position auf das längste Segment |
-| `separateOverlaps(routes, model, spacing)` | `separation.ts` | Schiebt übereinanderliegende Segmente auseinander, siehe 10.4 |
-| `findDetours(routes, model, options)` | `separation.ts` | Checkpoints für Kanten, die nicht in ihre Lücke passen, siehe 10.4 |
-| `routeQuality(routes, model)` | `separation.ts` | `{ overlap, crossings, length }` einer Routenmenge, zum Vergleichen |
-| `edgeStyleToPoints(style, sourceCentre, targetCentre)` | `edge-style.ts` | Umkehrung von `routeToEdgeStyle` |
+| `LibavoidRouting` | `cytoscape-adapter/libavoid-routing.ts` | Klasse hinter `cy.libavoid()`, siehe 8.3 |
+| `defaults` | `cytoscape-adapter/options.ts` | Standardoptionen (eingefroren) |
+| `loadLibavoid(wasmUrl?)` → `Promise<Avoid>` | `libavoid/load.ts` | Lädt libavoid einmalig und gibt die Instanz zurück. Weitere Aufrufe liefern dasselbe Promise (mit einer anderen URL und einer Warnung). Nach einem Fehler wird beim nächsten Aufruf neu versucht. |
+| `EdgeRouter` | `routing/edge-router.ts` | Routet ein Datenmodell ohne Cytoscape, siehe 8.5 |
+| `defaultRoutingOptions` | `routing/options.ts` | Standardwerte der Routing-Optionen (eingefroren) |
+| `routeQuality(routes, model)` | `postprocess/route-quality.ts` | `{ overlap, crossings, length }` einer Routenmenge, zum Vergleichen |
+| `WorkerRouter` | `worker/worker-router.ts` | Asynchrones Gegenstück zu `EdgeRouter` in einem Worker mit `routing.worker.ts`: `new WorkerRouter(worker, wasmUrl)`, `route(model, options)`, `busy`, `dispose()` |
+
+Dazu die Typen `LibavoidOptions`, `EdgeSides`, `RoutedEventInfo`,
+`RoutingOptions`, `GraphModel`, `GraphNode`, `GraphEdge`, `Point`, `Side`,
+`RouteQuality`, `RoutingWorker` sowie `RoutingBackend` und `RouteResult`, die
+gemeinsame Schnittstelle von `WorkerRouter` und dem Routing im Haupt-Thread.
+Weitere Bausteine (z. B. `EdgeStyler`, `routeToEdgeStyle`, `separateOverlaps`,
+`LibavoidSession`) gehören nicht zur öffentlichen API; wer sie braucht,
+importiert sie aus ihrer Datei.
 
 Alle Optionen sind an den Typen `LibavoidOptions` und `RoutingOptions`
 dokumentiert und erscheinen so auch im Editor.
@@ -427,7 +402,7 @@ dokumentiert und erscheinen so auch im Editor.
 import { EdgeRouter, loadLibavoid } from './cytoscape-libavoid';
 
 const avoid = await loadLibavoid();
-const router = new EdgeRouter(avoid, { routingType: 'orthogonal' });
+const router = new EdgeRouter(avoid, { shapeBufferDistance: 12 });
 const routes = router.route({
   nodes: [
     { id: 'a', x: 0, y: 0, width: 60, height: 40 }, // x/y = Mittelpunkt
@@ -454,19 +429,17 @@ in `router.options`.
 | `nodes[].width`, `.height` | ja | Breite, Höhe |
 | `edges[].id` | ja | eindeutige ID |
 | `edges[].source`, `.target` | ja | Knoten-IDs |
-| `edges[].width` | nein | Breite für Stapeln und Nudging (Standard 0) |
-| `edges[].sourceSide`, `.targetSide` | nein | erzwungene Seite bei `docking` |
+| `nodes[].obstacle` | nein | `false`: nur Endpunkt, kein Hindernis (z. B. ein Compound-Knoten); seine Kanten enden mittig an der Seite zum anderen Ende |
+| `edges[].width` | nein | Breite für Nudging und Auseinanderschieben (Standard 0) |
+| `edges[].sourceSides`, `.targetSides` | nein | erlaubte Seiten (`'top'`, `'right'`, `'bottom'`, `'left'`); fehlt die Angabe, alle vier |
 
 Schleifen (Quelle = Ziel) und Kanten mit unbekannten Endpunkten werden
 übersprungen. Optionen wie in [Abschnitt 6](#6-optionen) (nur der Teil
 „Routing“).
 
-Für jeden `route()`-Aufruf baut `EdgeRouter` über `LibavoidRouter` einen neuen
+Für jeden `route()`-Aufruf baut `EdgeRouter` über eine `LibavoidSession` einen neuen
 libavoid-Router auf und gibt danach den gesamten WebAssembly-Speicher wieder frei.
-
-**`computeDockingPorts(model, { flowDirection, portSpacing })`** gibt
-`Map<edgeId, { source: { side, offset }, target: { side, offset } }>` zurück.
-`offset` ist die relative Position (0 bis 1) entlang der Knotenseite.
+Ungültige Optionen wirft schon `new EdgeRouter()`; `router.options` ist eingefroren.
 
 ## 9. Events
 
@@ -488,8 +461,8 @@ cy.on('avoiderror', (evt, error) => showWarning(error.message));
 
 Ein fehlgeschlagener automatischer Lauf wird zusätzlich mit `console.error`
 protokolliert; das Plugin läuft weiter und versucht es bei der nächsten
-Änderung erneut. Fehler bei `route()` und `setOptions()` werden dagegen direkt
-an den Aufrufer geworfen.
+Änderung erneut. Fehler bei `refresh()` lehnen dagegen dessen Promise ab, und
+ungültige Optionen wirft `setOptions()` direkt.
 
 Bei `live: true` hört das Plugin auf diese Cytoscape-Events:
 
@@ -512,8 +485,8 @@ gezogen wird, liegen die Läufe mindestens `dragRouteInterval` auseinander.
 1. `model()` sammelt alle sichtbaren Knoten, die zu `obstacles` passen, mit
    ihrer Bounding Box, und alle sichtbaren Kanten aus `edges`, deren beide
    Endpunkte Hindernisse sind.
-2. `EdgeRouter.route()` legt über `LibavoidRouter` für jeden Knoten ein
-   Rechteck an, erzeugt die Anschlusspunkte (Ports) und verbindet sie, dann
+2. `EdgeRouter.route()` legt über eine `LibavoidSession` für jeden Knoten ein
+   Rechteck mit vier Anschlusspunkten an und verbindet sie, dann
    wird geroutet. Jede Route wird vereinfacht. Danach folgen die Umwege für
    überfüllte Lücken und das Auseinanderschieben (siehe 10.4).
 3. `EdgeStyler.apply()` rechnet die Routen in Cytoscape-Styles um und setzt sie
@@ -524,23 +497,15 @@ Bei jedem Lauf wird der komplette Graph neu geroutet. Ein Lauf ist meist so
 schnell, dass das auch beim Ziehen flüssig bleibt (siehe
 [Performance](#12-performance)).
 
-### 10.2 Docking Ports
+### 10.2 Anschlusspunkte
 
-Im Modus `docking` gilt für jede Knotenseite:
-
-1. Alle Kanten, die diese Seite nutzen, werden nach der Lage des Gegenknotens
-   entlang der Seite sortiert: an linken und rechten Seiten nach dessen
-   y-Koordinate, an oberen und unteren nach dessen x-Koordinate. Das gilt
-   auch für Seiten, die per `sourceSide` / `targetSide` erzwungen werden.
-2. Die Kanten werden in dieser Reihenfolge lückenlos gestapelt. Jede belegt
-   ihre Breite, dazwischen liegt `portSpacing`. Der Stapel sitzt mittig auf der
-   Seite.
-3. Ist der Stapel länger als die Seite, wird er proportional gestaucht.
-4. Jede Kante bekommt einen exklusiven Docking Port in der Mitte ihres Bandes.
-
-So setzen die Kanten nebeneinander ohne Lücke am Knoten an und kreuzen sich
-nicht direkt am Knoten. Die Verteilung auf einer Seite übernimmt
-`spreadPorts()`.
+Jeder Knoten bekommt vier Anschlusspunkte, je einen in der Mitte jeder Seite;
+alle Kanten teilen sie sich. libavoid wählt für jedes Kantenende die
+günstigste Seite. `nudgeConnectedSegments` (Standard an) schiebt die Enden, die
+an derselben Seite ansetzen, nach ihrer Breite auseinander, damit sie sich am
+Knoten nicht überdecken. Wo libavoid sie trotzdem auf einer Linie lässt (etwa
+bei vielen Kanten in einen Knoten), fächert `separateOverlaps` sie entlang der
+Seite auf (siehe 10.4).
 
 ### 10.3 Darstellung in Cytoscape
 
@@ -575,32 +540,31 @@ Lücke zwischen Knoten laufen, etwa zwischen den Spalten einer Gruppe, legt es
 sie deshalb auf dieselbe Linie. Bei Gruppen mit fluchtenden Spalten bilden
 diese Lücken durchgehende „Gassen“, durch die 20–30 Kanten laufen, obwohl nur
 etwa drei hineinpassen. Keine libavoid-Option ändert das. Zwei Schritte nach
-dem libavoid-Lauf lösen es (nur orthogonales Routing):
+dem libavoid-Lauf lösen es:
 
 1. **Umwege (`detourCrowded`):** In Gassen, die mehr Kanten nutzen, als
    hineinpassen, bleiben die kurzen, lokalen Abschnitte. Die Kanten, die nur
    durchlaufen, bekommen – die längsten zuerst, höchstens 30 % aller Kanten –
    einen Checkpoint in der nächsten Gasse, die über die ganze Strecke frei und
-   deutlich breiter ist. Bei Docking Ports nur in Gassen zwischen den beiden
-   Enden der Kante, sonst entstünde eine Schleife um den Knoten. Ein zweiter
+   deutlich breiter ist. Ein zweiter
    libavoid-Lauf routet durch diese Punkte; das Ergebnis wird nur übernommen,
    wenn es deutlich weniger überlappt, ohne viel länger zu werden oder viel
    öfter zu kreuzen.
 2. **Auseinanderschieben (`separateOverlaps`):** Übrige übereinanderliegende
-   Segmente werden um ihre Breite plus `portSpacing` auseinandergeschoben,
+   Segmente werden um ihre Breite plus `edgeSpacing` auseinandergeschoben,
    innerhalb der Lücke (notfalls in einen Teil des Abstands zum Knoten), nie in
-   einen Knoten hinein. Das erste und letzte Segment einer Route hängt an
-   seinem Port und bleibt, wo es ist. Wird ein senkrechtes Segment verschoben,
+   einen Knoten hinein. Das erste und letzte Segment einer Route gleitet nur
+   entlang der Knotenseite, an der es endet; Kanten am selben Anschlusspunkt
+   fächern so entlang der Seite auf. Ist die Seite zu kurz für alle Kanten,
+   werden sie gestaucht. Wird ein senkrechtes Segment verschoben,
    strecken sich nur seine waagerechten Nachbarn; die Route bleibt orthogonal.
 
 Gemessen mit `npm run quality` auf dem Graphen M (128 Knoten, 182 Kanten):
 
 | | übereinanderliegende Striche | Kreuzungen | Länge |
 |---|--:|--:|--:|
-| `auto`, nur libavoid | 61.940 px | 1310 | 140.154 |
-| `auto`, jetzt | **6.175 px** | 1348 | 146.516 |
-| `docking`, nur libavoid | 63.892 px | 1047 | 136.353 |
-| `docking`, jetzt | **20.111 px** | 1205 | 136.262 |
+| nur libavoid | 61.940 px | 1310 | 140.154 |
+| jetzt | **6.175 px** | 1348 | 146.516 |
 
 Keine Kante läuft durch einen Knoten. Die Umwege kosten einen zweiten
 libavoid-Lauf; während des Ziehens wird deshalb ohne sie geroutet (Entwurf),
@@ -625,7 +589,7 @@ hängt, etwa eine Säule in einem Hallenlayout.
 const routing = cy.libavoid({ live: false });
 await routing.ready;
 // … viele Änderungen …
-routing.route();
+await routing.refresh();
 ```
 
 ### Nach einem Layout
@@ -635,13 +599,13 @@ Frame zusammengefasst. Bei `live: false`:
 
 ```js
 cy.layout({ name: 'dagre' }).run();
-cy.one('layoutstop', () => routing.route());
+cy.one('layoutstop', () => routing.refresh());
 ```
 
 ### Flussbreite unabhängig von der angezeigten Breite
 
 ```js
-cy.libavoid({ ports: 'docking', edgeWidth: (e) => e.data('menge') * 0.5 });
+cy.libavoid({ edgeWidth: (e) => e.data('menge') * 0.5 });
 ```
 
 ### Weniger Kreuzungen, weniger Knicke
@@ -663,7 +627,7 @@ export function Flussdiagramm({ elements }) {
   const ref = useRef(null);
   useEffect(() => {
     const cy = cytoscape({ container: ref.current, elements, layout: { name: 'preset' } });
-    const routing = cy.libavoid({ ports: 'docking', wasmUrl: '/libavoid.wasm' });
+    const routing = cy.libavoid({ wasmUrl: '/libavoid.wasm' });
     return () => {
       routing.destroy();              // erst das Routing beenden …
       cy.destroy();                   // … dann Cytoscape
@@ -702,14 +666,12 @@ await routing.ready;
 - Es ist immer nur eine Anfrage unterwegs. Änderungen in der Zwischenzeit
   werden gesendet, sobald die Antwort da ist; bei schnellen Änderungen wird so
   immer der neueste Stand geroutet.
-- `route()` ist synchron und daher mit Worker nicht verfügbar, `refresh()`
-  funktioniert in beiden Fällen.
 - `dragRouteInterval: 'auto'` legt mit Worker keine Pause ein, weil der
   Haupt-Thread nicht blockiert.
 - Mehrere Instanzen dürfen sich einen Worker teilen. Das Plugin beendet ihn
   nicht; bei Bedarf `worker.terminate()` selbst aufrufen.
 
-Im Angular-Benchmark (Graph M, Docking Ports) läuft das Ziehen mit Worker mit
+Im Angular-Benchmark (Graph M) läuft das Ziehen mit Worker mit
 175 fps statt 87 fps ohne, ohne lange Tasks im Haupt-Thread; Knoten
 hinzufügen und entfernen kostet 48 ms statt 650 ms Skriptzeit. Die Demo nutzt
 den Worker mit `?worker=1`.
@@ -718,13 +680,13 @@ den Worker mit `?worker=1`.
 
 Ein Lauf routet immer den kompletten Graphen neu. Gemessen mit `npm run perf`
 (Node.js 25, nur `EdgeRouter`, ohne Cytoscape) auf den Materialfluss-Graphen
-des Angular-Benchmarks, Docking Ports (`auto` ist ähnlich):
+des Angular-Benchmarks:
 
-| Graph | nur libavoid | Standard (mit Umwegen) | `routingType: 'polyline'` |
-|---|--:|--:|--:|
-| S: 45 Knoten, 53 Kanten | ~5 ms | ~16 ms | ~85 ms |
-| M: 128 Knoten, 182 Kanten | ~77 ms | ~200 ms | ~2100 ms |
-| L: 300 Knoten, 488 Kanten | ~1040 ms | ~2900 ms | – |
+| Graph | nur libavoid | Standard (mit Umwegen) |
+|---|--:|--:|
+| S: 45 Knoten, 53 Kanten | ~6 ms | ~12 ms |
+| M: 128 Knoten, 182 Kanten | ~49 ms | ~130 ms |
+| L: 300 Knoten, 488 Kanten | ~480 ms | ~1230 ms |
 
 Die Umwege (`detourCrowded`) brauchen einen zweiten libavoid-Lauf und
 verdoppeln damit etwa die Zeit; `separateOverlaps` kostet ~10 %. Bei großen
@@ -747,8 +709,8 @@ etwa fünfmal pro Sekunde; während des Ziehens wird ohne Umwege geroutet
 
 Die libavoid-Option `performUnifyingNudgingPreprocessingStep` ist
 standardmäßig ausgeschaltet. Eingeschaltet steigt die Zeit für einen Graphen
-mit 64 Knoten und 112 Kanten von ~50 ms auf 3,4 s (`auto`) bzw. von ~140 ms
-auf 16 s (`docking`), dafür gibt es etwas weniger Knicke. Bei kleinen Graphen
+mit 64 Knoten und 112 Kanten von ~50 ms auf 3,4 s, dafür gibt es etwas
+weniger Knicke. Bei kleinen Graphen
 ohne Live-Ziehen können Sie sie wieder einschalten:
 
 ```js
@@ -757,11 +719,11 @@ cy.libavoid({ routingOptions: { performUnifyingNudgingPreprocessingStep: true } 
 
 Weitere Hebel bei großen Graphen:
 
-- bei `orthogonal` bleiben: `polyline` ist um ein Vielfaches langsamer (siehe Tabelle)
-- `ports: 'auto'` ist bei großen Graphen etwa doppelt so schnell wie `docking`
 - `rerouteOnDrag: false`: nur beim Loslassen neu routen
+- `dragRouteDelay: 150`: erst routen, wenn der Knoten kurz ruht; mit
+  `hideEdgesOnDrag: true` sind die Kanten bis dahin ausgeblendet
 - über `edges` und `obstacles` nur den nötigen Teil des Graphen routen
-- `live: false` und `routing.route()` gezielt aufrufen, wenn sich viele Daten
+- `live: false` und `routing.refresh()` gezielt aufrufen, wenn sich viele Daten
   ändern, die Geometrie aber selten
 
 ## 13. Fehlersuche
@@ -771,12 +733,11 @@ Weitere Hebel bei großen Graphen:
 | `ready` wird abgelehnt, 404 auf `libavoid.wasm` | Datei wird nicht ausgeliefert oder `wasmUrl` stimmt nicht. Den Pfad im Netzwerk-Tab der Browser-Entwicklertools prüfen. |
 | Fehler beim Laden von der Festplatte | Seite wurde über `file://` geöffnet. Über einen Webserver ausliefern (z. B. `npm run demo`). |
 | `CompileError` oder CSP-Meldung zu WebAssembly | `'wasm-unsafe-eval'` in `script-src` der Content-Security-Policy ergänzen. |
-| `not ready yet, await routing.ready first` | `route()` wurde vor dem Laden aufgerufen. Erst `await routing.ready`. |
 | Alle Knoten liegen auf (0, 0), Kanten haben keine Route | Ohne `layout` setzt Cytoscape den `null`-Layout ein, der alle Knoten auf (0, 0) legt. `layout: { name: 'preset' }` oder ein echtes Layout angeben. |
-| Eine Kante wird nicht geroutet | Ein Endpunkt passt nicht zu `obstacles` (z. B. ein Compound-Knoten bei `node:childless`), ein Element ist unsichtbar, oder es ist eine Schleife. Mit `routing.model()` prüfen, was ankommt. |
+| Eine Kante wird nicht geroutet | Sie verbindet einen Compound-Knoten mit einem Knoten darin, ein Element ist unsichtbar, oder es ist eine Schleife. Mit `routing.model()` prüfen, was ankommt. |
 | Kanten laufen durch Beschriftungen | `includeLabels: true` |
 | Kanten liegen zu dicht am Knoten | `shapeBufferDistance` erhöhen |
-| Kanten an einer Knotenseite überlappen | Knotenseite zu kurz, die Bänder werden gestaucht. Knoten größer machen oder `edgeWidth` verkleinern. |
+| Kanten an einer Knotenseite überlappen | `nudgeConnectedSegments` ist aus, oder die Seite ist zu kurz für alle Kanten. Einschalten, Knoten größer machen oder `edgeWidth` verkleinern. |
 | Unbekannter Parameter- oder Optionsname | Schreibweise mit den Listen in [Abschnitt 6](#6-optionen) vergleichen. Bei automatischen Läufen kommt der Fehler über das Event `avoiderror` und die Konsole. |
 | Kanten hängen beim Ziehen hinterher | Gewollt bei großen Graphen, siehe `dragRouteInterval` in [Abschnitt 12](#12-performance). `dragRouteInterval: 0` routet in jedem Frame. |
 | Node-Prozess (Tests) beendet sich nicht | Am Ende `cy.destroy()` aufrufen. |
@@ -784,8 +745,12 @@ Weitere Hebel bei großen Graphen:
 ## 14. Demo
 
 `demo/index.html` zeigt einen Materialfluss mit 9 Stationen, einem reinen
-Hindernis (QS) und 13 Flüssen. Die Kantenbreite entspricht der Menge in
-t/Tag.
+Hindernis (QS) und 13 Flüssen in t/Tag. Die Kantenbreite wächst mit der
+Wurzel der Menge von 3 px bis 18 px für den größten Fluss
+(`demo/flow-width.ts`); so bleiben kleine neben großen Flüssen sichtbar. Im
+Stahlwerk ist der größte Fluss die Tagesproduktion der Warmbreitbandstraße
+(WBB, 8.000 t); dort enden die Breiten bei 12 px, weil die engsten Lücken
+zwischen den Knoten nur 30 px breit sind.
 
 **Starten** (Node.js ≥ 22.18):
 
@@ -805,14 +770,12 @@ Repo-Ordner gestartet wird.
 
 | Element | Wirkung |
 |---|---|
-| Ports | `docking` / `auto` |
-| Routing | `orthogonal` / `polyline` |
-| Fluss | `flowDirection`, auch `auto` |
-| Eckradius | `cornerRadius` 0–20 px |
+| Graph | `Beispiel` oder `Stahlwerk` (76 Knoten, 163 Flüsse und die Gruppen der Anwendung aus `demo/plant-graph.ts`, viele enge Lücken; Doppelklick auf eine einklappbare Gruppe klappt sie ein oder aus; lädt die Seite mit `?graph=plant` neu) |
 | beim Ziehen routen | `rerouteOnDrag` |
+| Verzögerung | `dragRouteDelay`, Start 600 ms: erst routen, wenn der Knoten so lange ruht, damit langsames Ziehen nicht ständig neu routet |
+| Kanten beim Ziehen ausblenden | `hideEdgesOnDrag`, zu Beginn an |
 | Label auf längstem Segment | `labelPosition: 'longest-segment'` (Kantenbeschriftung = Menge) |
 | Worker | routet in einem Web Worker (`worker`, lädt die Seite mit `?worker=1` neu) |
-| + Hindernis | fügt einen Knoten an zufälliger Stelle ein, die Kanten weichen sofort aus |
 | Knoten ziehen | Live-Routing |
 
 Unten rechts zeigt die Demo die Werte aus dem Event `avoidrouted`.
@@ -825,6 +788,10 @@ genau so, wie es ein anderes Projekt tut, und eignet sich als Vorlage.
 ```sh
 npm install
 npm test            # Tests (node:test), inkl. Integrationstest mit headless Cytoscape
+npm run test:e2e    # zieht Knoten der Demo in Chrome (playwright-core, nutzt das installierte Chrome)
+npm run lint        # oxlint
+npm run deps:check  # Schichtregeln von src/ (.dependency-cruiser.cjs)
+npm run deps        # Importgraph von src/ als Mermaid -> docs/dependencies.md
 npm run typecheck   # Typprüfung mit tsc (Plugin, Tests, Skripte, Demo)
 npm run perf        # Laufzeit des Routing-Kerns
 npm run quality     # Überlappungen, Kreuzungen, Knicke, Länge auf den Bench-Graphen
@@ -835,23 +802,46 @@ Das Plugin importiert seine Dateien ohne `.ts`-Endung, wie es Bundler
 erwarten. Node.js führt Tests und Benchmark direkt per Type Stripping aus;
 `scripts/ts-resolve.ts` ergänzt dabei die Endung.
 
-Aufbau des Quellcodes (eine Klasse pro Datei):
+Aufbau des Quellcodes (eine Klasse pro Datei, nach Aufgabe in Ordnern):
 
 | Datei | Klasse | Aufgabe |
 |---|---|---|
-| `index.ts` | `LibavoidRouting` | Plugin-Wrapper: Optionen, Modell aus `cy` erzeugen, auf Änderungen hören, Registrierung von `cy.libavoid()`. Delegiert Routing und Styling. |
-| `routing.ts` | `EdgeRouter` | Routing-Logik und Docking Ports. Kennt nur das einfache Modell, nicht Cytoscape. |
-| `libavoid.ts` | `LibavoidRouter` | libavoid-Anbindung: lädt die `.wasm`, kapselt die libavoid-API und deren Speicherverwaltung. |
-| `edge-style.ts` | `EdgeStyler` | Route ↔ Cytoscape-Style (reine Geometrie) und das Setzen / Entfernen der Styles. |
-| `separation.ts` | – | Nachbearbeitung orthogonaler Routen: Umwege für überfüllte Lücken, Auseinanderschieben, Qualitätsmaße (siehe 10.4). |
-| `routing.worker.ts` | – | Einstieg des Web Workers: beantwortet `RouteRequest`s mit `answerRouteRequest()` aus `routing.ts`. |
+| `index.ts` | – | Öffentliche API: Registrierung von `cy.libavoid()` und die Exporte für Anwendungen. |
+| `shared/geometry.ts` | – | `Point`, `Rect`, `Side`, `Axis` und Hilfen dazu (`extentOf`, `halfSize`, `sideFacing`, `sideMiddle`), von allen Teilen genutzt. |
+| `shared/graph.ts` | – | Das einfache Datenmodell (`GraphModel`, `GraphNode`, `GraphEdge`), `isObstacle`, `nodesById`, `routableEdges`. |
+| `shared/errors.ts` | – | `pluginError()` / `pluginMessage()` mit dem Namen des Plugins, Prüfungen für Optionen. |
+| `cytoscape-adapter/libavoid-routing.ts` | `LibavoidRouting` | Plugin: auf Änderungen hören, routen (im Haupt-Thread oder im Worker), Ergebnisse anwenden. |
+| `cytoscape-adapter/options.ts` | – | `LibavoidOptions`, `defaults`, `RoutedEventInfo`. |
+| `cytoscape-adapter/snapshot.ts` | – | Liest das Modell aus `cy` (sichtbare Hindernisse und Kanten). |
+| `cytoscape-adapter/route-style.ts` | – | Route ↔ Cytoscape-Style (reine Geometrie), Beschriftungsposition. |
+| `cytoscape-adapter/edge-styler.ts` | `EdgeStyler` | Setzt und entfernt die Styles auf den Kanten. |
+| `cytoscape-adapter/route-scheduler.ts` | `RouteScheduler` | Wann neu geroutet wird: höchstens einmal pro Frame, beim Ziehen nach `dragRouteDelay` und mit Pause nach `dragRouteInterval`. Kennt Cytoscape nicht. |
+| `cytoscape-adapter/drag-tracker.ts` | `DragTracker` | Welche Knoten gerade gezogen werden, aus den Events `grab`, `free` und `remove`. |
+| `routing/edge-router.ts` | `EdgeRouter` | Routing-Logik. Kennt nur das einfache Modell, nicht Cytoscape. |
+| `routing/options.ts` | – | `RoutingOptions`, ihre Standardwerte und ihre Prüfung. |
+| `routing/routing-backend.ts` | – | Schnittstelle `RoutingBackend`: wo geroutet wird. Das Plugin kennt nur sie. |
+| `routing/local-router.ts` | `LocalRouter` | `RoutingBackend` im Haupt-Thread, mit `EdgeRouter`. |
+| `postprocess/simplify.ts` | – | Rundet libavoids Punkte und entfernt überflüssige. |
+| `postprocess/run.ts` | `Run` | Ein gerades Stück einer Route: Lage, Ausdehnung, Überlappung, Kreuzung, Spielraum an der Knotenseite. |
+| `postprocess/run-index.ts` | `RunIndex` | Räumlicher Index der Runs, damit Nachbarn ohne Vergleich aller Paare gefunden werden. |
+| `postprocess/route-geometry.ts` | `RouteGeometry` | Routen in Runs zerlegt, mit Index; gemeinsame Abfragen (Bündel, freie Intervalle, Hindernisse neben einem Run). Wird pro libavoid-Lauf einmal gebaut. |
+| `postprocess/overlap-separator.ts` | – | `separateOverlapsIn(geometry)`: schiebt übereinanderliegende Segmente auseinander (siehe 10.4). |
+| `postprocess/detour-finder.ts` | – | `findDetoursIn(geometry)`: Umwege für überfüllte Lücken (siehe 10.4). |
+| `postprocess/route-quality.ts` | – | `measureQuality(geometry)`: Überlappung, Kreuzungen und Länge, zum Vergleichen. |
+| `libavoid/load.ts` | – | Lädt die `.wasm` einmalig. |
+| `libavoid/api.ts` | – | Typen des genutzten Teils der libavoid-js-API. |
+| `libavoid/libavoid-session.ts` | `LibavoidSession` | Ein Routing-Lauf mit der libavoid-API, gibt danach deren Speicher frei. |
+| `worker/messages.ts` | – | Nachrichten zwischen Plugin und Worker (`RouteRequest`, `RouteResponse`) und `RoutingWorker`, der Teil eines Workers, der sie sendet und empfängt. |
+| `worker/answer-route-request.ts` | – | `answerRouteRequest()`: die Seite des Workers, beantwortet eine Anfrage. |
+| `worker/worker-router.ts` | `WorkerRouter` | `RoutingBackend` im Worker: schickt Anfragen und ordnet die Antworten zu. |
+| `routing.worker.ts` | – | Einstieg des Web Workers: beantwortet `RouteRequest`s mit `answerRouteRequest()`. |
 
 Wichtig beim Arbeiten mit libavoid-js: Jedes mit `new` erzeugte Objekt liegt im
 WebAssembly-Speicher und muss mit `.delete()` freigegeben werden. Dasselbe gilt
 für Objekte, die Methoden zurückgeben: libavoid-js nutzt embind, das Kopien
 herausgibt, z. B. `displayRoute()` (eine `PolyLine`) und `at(i)` (ein `Point`).
 
-All das übernimmt `LibavoidRouter`: Hilfsobjekte merkt er sich und gibt sie in
+All das übernimmt `LibavoidSession`: Hilfsobjekte merkt sie sich und gibt sie in
 `dispose()` frei, zurückgegebene Kopien gibt er sofort nach dem Auslesen frei,
 und Objekte, die dem libavoid-Router gehören (Shapes, Pins, Connectors), werden
 mit dem Router freigegeben. `EdgeRouter.route()` ruft `dispose()` im

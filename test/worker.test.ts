@@ -10,14 +10,13 @@ before(() => register(cytoscape));
 test('with a worker, routes are computed there and applied to the edges', async () => {
   const cy = createCy(obstacleElements());
   const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker, ports: 'docking', cornerRadius: 4 });
+  const routing = cy.libavoid({ worker, edgeSpacing: 6, cornerRadius: 4 });
   try {
     await routing.ready;
     assert.equal(worker.requests.length, 1);
-    assert.equal(worker.requests[0].options.ports, 'docking', 'routing options are sent along');
+    assert.equal(worker.requests[0].options.edgeSpacing, 6, 'routing options are sent along');
     assert.equal(cy.$id('ab').style('curve-style'), 'round-segments');
     assert.ok((routing.getRoute('ab')?.length ?? 0) >= 4, 'routed around c');
-    assert.throws(() => routing.route(), /not available with a worker, use refresh\(\)/);
 
     cy.$id('c').position({ x: 150, y: 300 });
     await wait(40);
@@ -64,8 +63,8 @@ test('with a worker, refresh() waits for a fresh result and errors reject it', a
     assert.equal(first.get('ab')?.length, second.get('ab')?.length);
     assert.equal(worker.requests.length, 3, 'the second caller asked during the first request');
 
-    Object.assign(routing.options.routingParameters, { bogus: 1 });
-    await assert.rejects(routing.refresh(), /unknown routing parameter "bogus"/);
+    worker.answerError = 'libavoid broke';
+    await assert.rejects(routing.refresh(), /cytoscape-libavoid: libavoid broke/);
     assert.equal(errors.length, 0, 'a caller that waits gets the error itself');
 
     cy.$id('c').position({ x: 150, y: 50 });
@@ -79,9 +78,28 @@ test('with a worker, refresh() waits for a fresh result and errors reject it', a
 
 test('with a worker, a failing first run rejects ready', async () => {
   const cy = createCy(obstacleElements());
-  const routing = cy.libavoid({ worker: new InProcessWorker(), routingOptions: { bogus: true } as never });
+  const worker = new InProcessWorker();
+  worker.answerError = 'libavoid broke';
+  const routing = cy.libavoid({ worker });
   try {
-    await assert.rejects(routing.ready, /unknown routing option "bogus"/);
+    await assert.rejects(routing.ready, /libavoid broke/);
+  } finally {
+    cy.destroy();
+  }
+});
+
+test('a worker that fails to load rejects ready; once it works again, routing resumes', async () => {
+  const cy = createCy(obstacleElements());
+  const worker = new InProcessWorker();
+  worker.silent = true;
+  const routing = cy.libavoid({ worker });
+  try {
+    setTimeout(() => worker.fail('404 routing.worker.js'), 10);
+    await assert.rejects(routing.ready, /routing worker failed \(error\): 404 routing\.worker\.js/);
+
+    worker.silent = false; // e.g. an error thrown in the worker that did not stop it
+    const routes = await routing.refresh();
+    assert.ok((routes.get('ab')?.length ?? 0) >= 4, 'not stuck on the failed request');
   } finally {
     cy.destroy();
   }
@@ -148,15 +166,15 @@ test('edges removed while a worker request is in flight are skipped', async () =
 test('setOptions during a worker request is routed afterwards', async () => {
   const cy = createCy(obstacleElements());
   const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker, ports: 'auto' });
+  const routing = cy.libavoid({ worker });
   try {
     await routing.ready;
     worker.delayMs = 40;
     cy.$id('c').position({ x: 150, y: 10 }); // starts a request
     await wait(10);
-    routing.setOptions({ ports: 'docking' }); // while it is in flight
+    routing.setOptions({ edgeSpacing: 6 }); // while it is in flight
     await wait(150);
-    assert.equal(worker.requests.at(-1)?.options.ports, 'docking');
+    assert.equal(worker.requests.at(-1)?.options.edgeSpacing, 6);
   } finally {
     cy.destroy();
   }
@@ -174,14 +192,14 @@ test('WorkerRouters sharing one worker get their own answers; dispose() rejects 
   const first = new WorkerRouter(worker);
   const second = new WorkerRouter(worker);
   const [near, far] = await Promise.all([
-    first.route({ model: model(100), options: defaultRoutingOptions }),
-    second.route({ model: model(500), options: defaultRoutingOptions }),
+    first.route(model(100), defaultRoutingOptions),
+    second.route(model(500), defaultRoutingOptions),
   ]);
   assert.equal(near.routes.get('ab')?.at(-1)?.x, 80);
   assert.equal(far.routes.get('ab')?.at(-1)?.x, 480);
   assert.equal(first.busy || second.busy, false);
 
-  const pending = first.route({ model: model(100), options: defaultRoutingOptions });
+  const pending = first.route(model(100), defaultRoutingOptions);
   assert.equal(first.busy, true);
   first.dispose();
   await assert.rejects(pending, /disposed/);

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeStyleToPoints, EdgeStyler, labelOffset, routeToEdgeStyle } from '../src';
+import { edgeStyleToPoints, labelOffset, routeToEdgeStyle } from '../src/cytoscape-adapter/route-style';
+import { EdgeStyler } from '../src/cytoscape-adapter/edge-styler';
 import { createCy, obstacleElements } from './helpers';
 
 test('route -> cytoscape segment style round trip is exact', () => {

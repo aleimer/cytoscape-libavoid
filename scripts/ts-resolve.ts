@@ -4,7 +4,8 @@ import { registerHooks } from 'node:module';
 
 registerHooks({
   resolve(specifier, context, next) {
-    if (!specifier.startsWith('.') || /\.[cm]?[jt]s$/.test(specifier)) return next(specifier, context);
+    const fromPackage = context.parentURL?.includes('/node_modules/') ?? false; // packages resolve their own way
+    if (fromPackage || !specifier.startsWith('.') || /\.[cm]?[jt]s$/.test(specifier)) return next(specifier, context);
     try {
       return next(`${specifier}.ts`, context);
     } catch {

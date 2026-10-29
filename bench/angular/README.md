@@ -24,7 +24,7 @@ resolve a second copy of cytoscape from the repo's `node_modules` and break the 
 
 ```bash
 npm run bench                                # full matrix in bench.matrix.json
-npm run bench -- --only "all, docking"       # runs whose name contains the text
+npm run bench -- --only "all, worker"        # runs whose name contains the text
 npm run bench -- --zones zone --throttle 4   # zone mode only, CPU slowed down 4x
 npm run bench -- --no-build --headed         # skip ng build, show the browser
 ```
@@ -34,7 +34,7 @@ Results are written to `results/<timestamp>.md` and `.json`.
 ## Try it by hand
 
 ```bash
-npm start   # http://localhost:4200/?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel&ports=docking
+npm start   # http://localhost:4200/?size=M&zone=zone&plugins=libavoid,gridGuide,expandCollapse,htmlLabel
 ```
 
 The toolbar switches the configuration (it reloads the page) and runs single
@@ -44,7 +44,7 @@ scenarios; results appear below the graph.
 
 | | |
 |---|---|
-| Config | graph size `S`/`M`/`L`; zone mode; enabled plugins; libavoid `ports`, `rerouteOnDrag`, `dragRouteInterval` and `worker` |
+| Config | graph size `S`/`M`/`L`; zone mode; enabled plugins; libavoid `cornerRadius`, `rerouteOnDrag`, `dragRouteInterval` and `worker` |
 | Zone modes | `zone`: zone.js, cytoscape created inside the Angular zone (what most apps do); `zone-outside`: zone.js with `NgZone.runOutsideAngular`; `zoneless` |
 | Scenarios | `idle` 3 s · `drag` a node for 1.5 s with mouse events · `panzoom` 90 frames · `data` 10 live data updates of all nodes · `addRemove` 20 nodes + edges · `collapseExpand` all groups |
 | Metrics | CPU % and main-thread task / script ms (DevTools protocol), fps and p95 frame time, long tasks, libavoid runs and routing ms, Angular change detection ticks |

@@ -18,7 +18,6 @@ import { parseArgs } from 'node:util';
 interface MatrixRun {
   name: string;
   plugins: string[];
-  ports?: 'auto' | 'docking';
   rerouteOnDrag?: boolean;
   dragRouteInterval?: number | 'auto';
   worker?: boolean;
@@ -167,7 +166,6 @@ for (const run of runs) {
       size: matrix.size,
       zone,
       plugins: run.plugins.join(','),
-      ports: run.ports ?? 'docking',
       drag: run.rerouteOnDrag === false ? '0' : '1',
       interval: String(run.dragRouteInterval ?? 'auto'),
       worker: run.worker ? '1' : '0',

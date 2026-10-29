@@ -1,8 +1,10 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { EdgeRouter, loadLibavoid, routeQuality, separateOverlaps } from '../src';
+import { EdgeRouter, loadLibavoid, routeQuality } from '../src';
+import { separateOverlaps } from '../src/postprocess/overlap-separator';
 import type { Avoid, GraphModel, Point } from '../src';
 import { box, segmentHitsRect } from './helpers';
+import { COLLAPSIBLE_GROUPS, plantModel, plantView } from '../demo/plant-graph';
 
 let avoid: Avoid;
 before(async () => {
@@ -39,7 +41,7 @@ const twoEdges: GraphModel = {
   ],
 };
 
-test('separateOverlaps spreads stacked segments apart and keeps the ends at their ports', () => {
+test('separateOverlaps spreads stacked segments apart and leaves ends alone that do not overlap', () => {
   const routes = new Map([
     [
       'e1',
@@ -100,26 +102,44 @@ test('separateOverlaps squeezes into a narrow gap without entering the nodes bes
   assertNoNodeHits(model, separated);
 });
 
-test('separateOverlaps leaves routes without inner segments alone', () => {
+test('separateOverlaps slides end segments along the node side they end at', () => {
+  // both leave a at the pin in the middle of its right side (x = 20, side from y = -15 to 25)
+  const route = [
+    { x: 20, y: 5 },
+    { x: 150, y: 5 },
+    { x: 150, y: 195 },
+    { x: 280, y: 195 },
+  ];
   const routes = new Map([
-    [
-      'e1',
-      [
-        { x: 20, y: 0 },
-        { x: 150, y: 0 },
-        { x: 150, y: 175 },
-      ],
-    ],
-    [
-      'e2',
-      [
-        { x: 20, y: 0 },
-        { x: 150, y: 0 },
-        { x: 150, y: 175 },
-      ],
-    ],
+    ['e1', route],
+    ['e2', route],
   ]);
-  assert.deepEqual(separateOverlaps(routes, twoEdges, 2), routes);
+  const separated = separateOverlaps(routes, twoEdges, 2);
+  const [e1, e2] = [separated.get('e1')!, separated.get('e2')!];
+  assert.ok(Math.abs(e1[0]!.y - e2[0]!.y) >= 6 + 2 - 1e-9, `fanned out at a: ${e1[0]!.y} / ${e2[0]!.y}`);
+  for (const r of [e1, e2]) {
+    assert.equal(r[0]!.x, 20, 'starts on the right side of a');
+    assert.ok(r[0]!.y - 3 >= -15 && r[0]!.y + 3 <= 25, `stroke at y = ${r[0]!.y} stays on the side`);
+    assert.equal(r[3]!.x, 280, 'ends on the left side of b');
+    assert.ok(r[3]!.y - 3 >= 175 && r[3]!.y + 3 <= 215, `stroke at y = ${r[3]!.y} stays on the side`);
+    assertOrthogonal(r);
+  }
+  assert.equal(routeQuality(separated, twoEdges).overlap, 0);
+});
+
+test('separateOverlaps leaves end segments alone that do not end on a node side', () => {
+  // the last point (150, 175) is not on the border of b
+  const route = [
+    { x: 20, y: 5 },
+    { x: 150, y: 5 },
+    { x: 150, y: 175 },
+  ];
+  const routes = new Map([
+    ['e1', route],
+    ['e2', route],
+  ]);
+  const separated = separateOverlaps(routes, twoEdges, 2);
+  assert.deepEqual([separated.get('e1')![2], separated.get('e2')![2]], [route[2], route[2]]);
 });
 
 /**
@@ -150,26 +170,61 @@ function crowdedModel(): GraphModel {
   return model;
 }
 
-for (const ports of ['auto', 'docking'] as const) {
-  test(`separation and detours reduce overlaps in crowded gaps (${ports} ports)`, () => {
-    const model = crowdedModel();
-    const plain = new EdgeRouter(avoid, { ports, separateOverlaps: false, detourCrowded: false }).route(model);
-    const improved = new EdgeRouter(avoid, { ports }).route(model);
-    const before = routeQuality(plain, model);
-    const after = routeQuality(improved, model);
-    assert.ok(before.overlap > 0, 'the test graph has overlaps to begin with');
-    assert.ok(after.overlap < 0.5 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
-    assert.ok(after.crossings < 1.5 * before.crossings + 5, `crossings ${before.crossings} -> ${after.crossings}`);
-    for (const route of improved.values()) assertOrthogonal(route);
-    assertNoNodeHits(model, improved);
-  });
-}
-
-test('polyline routes are not post-processed', () => {
+test('separation and detours reduce overlaps in crowded gaps', () => {
   const model = crowdedModel();
-  const routes = new EdgeRouter(avoid, { routingType: 'polyline' }).route(model);
-  const plain = new EdgeRouter(avoid, { routingType: 'polyline', separateOverlaps: false, detourCrowded: false }).route(
-    model,
+  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowded: false }).route(model);
+  const improved = new EdgeRouter(avoid).route(model);
+  const before = routeQuality(plain, model);
+  const after = routeQuality(improved, model);
+  assert.ok(before.overlap > 0, 'the test graph has overlaps to begin with');
+  assert.ok(after.overlap < 0.5 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
+  assert.ok(after.crossings < 1.5 * before.crossings + 5, `crossings ${before.crossings} -> ${after.crossings}`);
+  for (const route of improved.values()) assertOrthogonal(route);
+  assertNoNodeHits(model, improved);
+});
+
+test('steel plant: crowded gaps between nodes one grid step apart', () => {
+  const model = plantModel();
+  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowded: false }).route(model);
+  const improved = new EdgeRouter(avoid).route(model);
+  assert.equal(improved.size, model.edges.length, 'every flow is routed');
+  const before = routeQuality(plain, model);
+  const after = routeQuality(improved, model);
+  // libavoid alone stacks ~70,000 px, a few short runs in the narrowest gaps remain
+  assert.ok(after.overlap < 0.01 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
+  for (const route of improved.values()) assertOrthogonal(route);
+  assertNoNodeHits(model, improved);
+});
+
+test('steel plant with collapsed groups: edges end at the groups and avoid every node', () => {
+  const collapsed = new Set(COLLAPSIBLE_GROUPS);
+  const model = plantModel({}, collapsed);
+  const ids = new Set(model.nodes.map((node) => node.id));
+  for (const group of collapsed) assert.ok(ids.has(group), `${group} is a node`);
+  assert.ok(!ids.has('HoA'), 'members of collapsed groups are gone');
+  assert.ok(
+    model.edges.some((edge) => edge.source === 'Ho-ABC' && edge.target === 'RE-123'),
+    'edges between members end at their groups',
   );
-  assert.deepEqual(routes, plain);
+  const routes = new EdgeRouter(avoid).route(model);
+  assert.equal(routes.size, model.edges.length);
+  assertNoNodeHits(model, routes);
+});
+
+test('plantView: only groups with a parent collapse; nested members follow the outermost one', () => {
+  const view = plantView(new Set(['TS', 'SGA-1234']));
+  assert.ok(
+    view.groups.some((group) => group.id === 'TS'),
+    'a visual group stays expanded',
+  );
+  assert.ok(view.nodes.some((node) => node.id === 'SGA-1234' && node.collapsed && node.parent === 'TS'));
+  assert.ok(!view.nodes.some((node) => node.id === 'SGA1'));
+  assert.ok(view.edges.every((edge) => edge.source !== edge.target));
+});
+
+test('steel plant: edges into the same node side fan out along it', () => {
+  const model = plantModel();
+  const routes = new EdgeRouter(avoid).route(model);
+  const ends = ['VSH-V4->CUST', 'VSH-U1->CUST', 'OV-Y->CUST'].map((id) => routes.get(id)!.at(-1)!);
+  assert.equal(new Set(ends.map((end) => end.y)).size, 3, `ends: ${JSON.stringify(ends)}`);
 });

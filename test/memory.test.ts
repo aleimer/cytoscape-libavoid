@@ -58,7 +58,7 @@ test('every route and point copy libavoid hands out is freed', async () => {
   const original = prototype.displayRoute;
   const counts = trackRouteCopies(prototype);
   try {
-    for (const ports of ['auto', 'docking'] as const) new EdgeRouter(avoid, { ports }).route(gridModel());
+    new EdgeRouter(avoid).route(gridModel());
     assert.ok(counts.created > 100, `copies were made (${counts.created})`);
     assert.equal(counts.freed, counts.created, 'copies left in WebAssembly memory');
   } finally {
