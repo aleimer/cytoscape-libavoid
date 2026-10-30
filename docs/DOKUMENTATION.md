@@ -511,9 +511,11 @@ libavoid ordnet die Enden einer Seite nach ihrer Richtung, die Mitte bekommt
 also die Kante, die geradeaus läuft. Enden an einer Seite mehr als zwei Kanten,
 setzt das Plugin zum Schluss stattdessen die **dickste** Kante genau in die
 Mitte der Seite; die übrigen behalten ihre Reihenfolge links und rechts davon.
-Das kann direkt am Knoten Kreuzungen erzeugen. Passt der neue Fächer nicht auf
-die Seite oder würde er Striche übereinanderlegen, bleibt die Seite, wie sie
-ist. Bei gleich dicken Kanten ändert sich nichts.
+Das kann direkt am Knoten Kreuzungen erzeugen. Passt der Fächer nicht auf die
+Seite, wird er enger zusammengeschoben; passt er auch dann nicht, bleibt die
+Seite, wie sie ist. Knicke, die dadurch direkt am Knoten übereinanderliegen,
+schiebt `separateOverlaps` danach noch einmal auseinander. Bei gleich dicken
+Kanten ändert sich nichts.
 
 ### 10.3 Darstellung in Cytoscape
 
@@ -572,7 +574,7 @@ Gemessen mit `npm run quality` auf dem Graphen M (128 Knoten, 182 Kanten):
 | | übereinanderliegende Striche | Kreuzungen | Länge |
 |---|--:|--:|--:|
 | nur libavoid | 61.940 px | 1310 | 140.154 |
-| jetzt | **6.157 px** | 1355 | 146.612 |
+| jetzt | **5.802 px** | 1364 | 146.672 |
 
 Keine Kante läuft durch einen Knoten. Die Umwege kosten einen zweiten
 libavoid-Lauf; während des Ziehens wird deshalb ohne sie geroutet (Entwurf),

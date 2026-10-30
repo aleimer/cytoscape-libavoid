@@ -126,7 +126,7 @@ length on the bench graphs. On 128 nodes / 182 edges:
 | | overlapping strokes | crossings | length |
 |---|--:|--:|--:|
 | libavoid only | 61,940 px | 1310 | 140,154 |
-| now | **6,157 px** | 1355 | 146,612 |
+| now | **5,802 px** | 1364 | 146,672 |
 
 No edge runs through a node in any of them.
 

@@ -5,16 +5,26 @@
 // attaches at the side's centre, the others keep their order around it. That
 // may add crossings next to the node.
 //
+// libavoid often puts the bends of an edge turning up and one turning down on
+// the same line, since they do not touch. Once the fan is reordered they can lie
+// on top of each other for a few pixels next to the node; EdgeRouter separates
+// overlaps again after this step.
+//
 // "End" below means either end of an edge: its start at the source or its end
 // at the target.
 
-import type { Point, Side } from '../shared/geometry';
+import type { Side } from '../shared/geometry';
 import type { RouteGeometry } from './route-geometry';
-import { MIN_SHARED_LENGTH } from './segment';
 import type { Segment, SegmentEnd } from './segment';
 
 /** Sides with fewer edges keep libavoid's fan. */
 const MIN_ENDS = 3;
+/**
+ * A fan that does not fit on the side is squeezed in steps of 1/SQUEEZE_STEPS
+ * of its gaps, down to MIN_SQUEEZE_STEPS of them; below that the side stays as it is.
+ */
+const SQUEEZE_STEPS = 10;
+const MIN_SQUEEZE_STEPS = 2;
 
 /** One edge end on a node side, start or target end: the end segment and which of its ends it is. */
 interface SideEnd {
@@ -24,19 +34,15 @@ interface SideEnd {
 
 /**
  * Reorders the edges on every node side that at least MIN_ENDS of them start or
- * end at, so the thickest attaches at the centre of the side; changes `geometry` in place.
- * Sides whose ends are not fanned out, where the new fan does not fit or where it
- * would make strokes overlap stay as they are.
+ * end at, so the thickest attaches at the centre of the side; changes `geometry`
+ * in place. Sides whose ends are not fanned out or where even the squeezed fan
+ * does not fit stay as they are. Separate overlaps afterwards, see the top of the file.
  *
  * @param spacing gap kept between neighbouring strokes (px)
  */
 export function centreThickestEdgesIn(geometry: RouteGeometry, spacing: number): void {
-  const segmentsByRoute = new Map<Point[], Segment[]>();
-  for (const segment of geometry.segments) {
-    segmentsByRoute.set(segment.route, [...(segmentsByRoute.get(segment.route) ?? []), segment]);
-  }
   for (const ends of endsBySide(geometry).values()) {
-    if (ends.length >= MIN_ENDS) centreThickest(geometry, ends, spacing, segmentsByRoute);
+    if (ends.length >= MIN_ENDS) centreThickest(geometry, ends, spacing);
   }
 }
 
@@ -59,13 +65,8 @@ function sideOf(segment: Segment, { node, point }: SegmentEnd): Side {
   return segment.axis === 'x' ? (end.y < node.y ? 'top' : 'bottom') : end.x < node.x ? 'left' : 'right';
 }
 
-/** Moves the ends of one side so the thickest is at the centre, if the new fan fits and overlaps no more. */
-function centreThickest(
-  geometry: RouteGeometry,
-  ends: SideEnd[],
-  spacing: number,
-  segmentsByRoute: ReadonlyMap<Point[], Segment[]>,
-): void {
+/** Moves the ends of one side so the thickest is at the centre, squeezed as little as needed to fit. */
+function centreThickest(geometry: RouteGeometry, ends: SideEnd[], spacing: number): void {
   if (ends.some(({ segment }) => !segment.movable)) return;
   const fan = ends.map(({ segment }) => segment).sort((a, b) => a.position - b.position);
   if (fan[0]!.position === fan[fan.length - 1]!.position) return; // not fanned out, see nudgeConnectedSegments
@@ -85,40 +86,25 @@ function centreThickest(
 
   // libavoid's gaps where they are wide enough, otherwise the widths plus spacing
   const gaps = fan.slice(1).map((segment, i) => segment.position - fan[i]!.position);
-  const offsets = [0];
-  for (let i = 1; i < order.length; i++) {
-    const needed = (order[i - 1]!.width + order[i]!.width) / 2 + spacing;
-    offsets.push(offsets[i - 1]! + Math.max(gaps[i - 1]!, needed));
-  }
-  const positions = offsets.map((offset) => centre + offset - offsets[middle]!);
-  if (order.every((segment, i) => segment.position === positions[i])) return;
-
-  const fits = order.every((segment, i) => {
-    const [low, high] = geometry.freeInterval(segment);
-    return low <= positions[i]! && positions[i]! <= high;
+  const pitches = order.slice(1).map((segment, i) => {
+    const needed = (order[i]!.width + segment.width) / 2 + spacing;
+    return Math.max(gaps[i]!, needed);
   });
-  if (!fits) return;
+  const freeIntervals = order.map((segment) => geometry.freeInterval(segment));
 
-  // moving an end segment stretches the next one of its route, which may then lie on another edge
-  const affected = new Set(order);
-  for (const segment of order) {
-    for (const next of segmentsByRoute.get(segment.route) ?? []) {
-      if (Math.abs(next.index - segment.index) === 1) affected.add(next);
+  // the full fan if it fits, otherwise squeezed as little as possible
+  for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--) {
+    const positions = fanPositions(pitches, middle, centre, steps / SQUEEZE_STEPS);
+    if (freeIntervals.every(([low, high], i) => low <= positions[i]! && positions[i]! <= high)) {
+      order.forEach((segment, i) => geometry.move(segment, positions[i]!));
+      return;
     }
-  }
-  const before = overlapsOf(geometry, affected);
-  const previous = order.map((segment) => segment.position);
-  order.forEach((segment, i) => geometry.move(segment, positions[i]!));
-  if (overlapsOf(geometry, affected) > before + MIN_SHARED_LENGTH) {
-    order.forEach((segment, i) => geometry.move(segment, previous[i]!));
   }
 }
 
-/** Total length along which these segments overlap others. */
-function overlapsOf(geometry: RouteGeometry, segments: ReadonlySet<Segment>): number {
-  let total = 0;
-  for (const segment of segments) {
-    for (const near of geometry.overlapping(segment)) total += segment.overlapLength(near);
-  }
-  return total;
+/** Positions of a fan with these gaps between neighbours, scaled by `squeeze`, with slot `middle` at `centre`. */
+function fanPositions(pitches: readonly number[], middle: number, centre: number, squeeze: number): number[] {
+  const offsets = [0];
+  for (const pitch of pitches) offsets.push(offsets[offsets.length - 1]! + pitch * squeeze);
+  return offsets.map((offset) => centre + offset - offsets[middle]!);
 }

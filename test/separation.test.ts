@@ -2,6 +2,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { EdgeRouter, loadLibavoid, routeQuality } from '../src';
 import { separateOverlaps } from '../src/postprocess/overlap-separator';
+import { RouteGeometry } from '../src/postprocess/route-geometry';
 import type { Avoid, GraphModel, Point } from '../src';
 import { box, segmentHitsRect } from './helpers';
 import { COLLAPSIBLE_GROUPS, plantModel, plantView } from '../demo/plant-graph';
@@ -287,4 +288,29 @@ test("two edges on a node side keep libavoid's fan", () => {
   const model = hubModel([8, 2]);
   const routes = new EdgeRouter(avoid).route(model);
   assert.notEqual(hubEnds(model, routes).get('e0')!.y, 0);
+});
+
+test('steel plant: on every side with three or more edges the thickest attaches at the centre', () => {
+  const model = plantModel();
+  const geometry = new RouteGeometry(new EdgeRouter(avoid).route(model), model);
+  const sides = new Map<string, Array<{ width: number; position: number; centre: number }>>();
+  for (const segment of geometry.segments) {
+    for (const end of segment.ends) {
+      if (!segment.sideInterval(end)) continue;
+      const point = segment.route[end.point]!;
+      const side = segment.axis === 'x' ? point.y < end.node.y : point.x < end.node.x;
+      const key = `${end.node.id} ${segment.axis} ${side}`;
+      const centre = end.node[segment.axis];
+      sides.set(key, [...(sides.get(key) ?? []), { width: segment.width, position: segment.position, centre }]);
+    }
+  }
+  let crowded = 0;
+  for (const [key, ends] of sides) {
+    const widest = Math.max(...ends.map((end) => end.width));
+    if (ends.length < 3 || ends.every((end) => end.width === widest)) continue;
+    crowded++;
+    const atCentre = ends.some((end) => end.width === widest && Math.abs(end.position - end.centre) < 0.5);
+    assert.ok(atCentre, `${key}: ${JSON.stringify(ends)}`);
+  }
+  assert.ok(crowded > 10, `${crowded} crowded sides`);
 });

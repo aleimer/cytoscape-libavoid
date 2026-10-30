@@ -58,7 +58,8 @@ export class EdgeRouter {
    * and spreads apart overlapping segments. If some edges need a detour, routes a
    * second time through checkpoints in wider gaps and keeps whichever result is
    * better (see isBetter()). Finally the thickest edge on a node side with more
-   * than two edge ends moves to its centre. Loops and edges with a missing end are skipped.
+   * than two edges moves to its centre, and the overlaps that causes are spread
+   * apart again. Loops and edges with a missing end are skipped.
    *
    * @returns edge id -> route points, from the source end to the target end
    */
@@ -74,6 +75,7 @@ export class EdgeRouter {
       if (isBetter(measureQuality(second), measureQuality(first))) result = second;
     }
     centreThickestEdgesIn(result, this.options.edgeSpacing);
+    this.separate(result); // the reordered fans can put bends next to the node on top of each other
     return result.routes;
   }
 

@@ -82,7 +82,7 @@ Bench graph with 128 nodes / 182 edges (`npm run quality`):
 | | overlapping strokes | crossings |
 |---|--:|--:|
 | 0.1.0 (`ports: 'auto'`) | 61,940 px | 1310 |
-| now | 6,157 px | 1355 |
+| now | 5,802 px | 1364 |
 
 Where more than two edges end at one node side, the thickest one now ends at
 the centre of the side; the others keep their order around it. This adds a
