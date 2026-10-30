@@ -7,6 +7,7 @@
 import { answerRouteRequest } from './worker/answer-route-request';
 import type { RouteRequest } from './worker/messages';
 
+// every request is answered with a message of the same id, also when routing fails
 addEventListener('message', (event: MessageEvent<RouteRequest>) => {
   void answerRouteRequest(event.data).then((response) => postMessage(response));
 });

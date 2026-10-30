@@ -1,5 +1,5 @@
-// A libavoid session: one routing run with the libavoid API used by
-// EdgeRouter. It frees everything it allocates in WebAssembly memory.
+// A thin layer over the part of the libavoid API that EdgeRouter uses: shapes,
+// pins, connectors and checkpoints, in model coordinates.
 
 import type { Point, Side } from '../shared/geometry';
 import type { Avoid, ConnEnd, ConnRef, Deletable, Router, ShapeRef } from './api';
@@ -18,18 +18,20 @@ export class LibavoidSession {
   /** Helper objects to free in dispose(); shapes, pins and connectors are freed by the router itself. */
   private readonly allocations: Deletable[] = [];
 
-  /** Routes orthogonally: horizontal and vertical segments only. */
+  /** A libavoid router for orthogonal routes: horizontal and vertical segments only. */
   constructor(avoid: Avoid) {
     this.avoid = avoid;
     this.router = new avoid.Router(avoid.RouterFlag.OrthogonalRouting.value);
   }
 
+  /** Sets one of libavoid's RoutingParameters by name; unknown names throw. */
   setParameter(name: string, value: number): void {
     const parameter = this.avoid.RoutingParameter[name];
     if (!parameter) throw pluginError(`unknown routing parameter "${name}"`);
     this.router.setRoutingParameter(parameter, value);
   }
 
+  /** Sets one of libavoid's RoutingOptions by name; unknown names throw. */
   setOption(name: string, value: boolean): void {
     const option = this.avoid.RoutingOption[name];
     if (!option) throw pluginError(`unknown routing option "${name}"`);
@@ -66,11 +68,6 @@ export class LibavoidSession {
     pin.setExclusive(false); // libavoid's default is one connector per pin
   }
 
-  /** Adds a connector from a pin class of one shape to a pin class of another. */
-  connect(source: ShapeRef, sourcePinClass: number, target: ShapeRef, targetPinClass: number): ConnRef {
-    return this.connectEnds(this.shapeEnd(source, sourcePinClass), this.shapeEnd(target, targetPinClass));
-  }
-
   /** A connector end at any pin of this class of a shape. */
   shapeEnd(shape: ShapeRef, pinClass: number): ConnEnd {
     return this.track(new this.avoid.ConnEnd(shape, pinClass));
@@ -95,7 +92,7 @@ export class LibavoidSession {
     connector.setRoutingCheckpoints(checkpoints);
   }
 
-  /** Routes all connectors. */
+  /** Routes all connectors; afterwards pointsOf() returns their routes. */
   route(): void {
     this.router.processTransaction();
   }
@@ -116,6 +113,7 @@ export class LibavoidSession {
     }
   }
 
+  /** Frees everything the session allocated; it cannot be used afterwards. */
   dispose(): void {
     for (const allocation of this.allocations) allocation.delete();
     this.allocations.length = 0;

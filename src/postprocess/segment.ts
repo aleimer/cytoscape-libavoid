@@ -9,26 +9,28 @@ import type { GraphModel, GraphNode } from '../shared/graph';
 export const NODE_MARGIN = 2;
 /** How far a route end may lie off the node border and still count as on it (px). */
 const BORDER_TOLERANCE = 0.5;
-/** Shorter shared runs do not count as overlaps; they are just touching corners. */
-export const MIN_SHARED_RUN = 1;
+/** Overlaps shorter than this (px) do not count: they are just touching corners. */
+export const MIN_SHARED_LENGTH = 1;
 
 /** A route end: the node it is attached to and the index of the end point in the route. */
-export interface RunEnd {
+export interface SegmentEnd {
   node: GraphNode;
   point: number;
 }
 
 /** An orthogonal segment of a route, between route[index] and route[index + 1]. */
-export class Run {
+export class Segment {
   readonly edgeId: string;
-  /** The whole route; moving the run changes it in place. */
+  /** The whole route; moving the segment changes it in place. */
   readonly route: Point[];
+  /** Where the segment starts in `route`. */
   readonly index: number;
   /** The coordinate the segment can be moved along: x for a vertical segment, y for a horizontal one. */
   readonly axis: Axis;
+  /** Stroke width of the edge (px). */
   readonly width: number;
   /** Set for the first and last segment: they may only slide along the side of these nodes. */
-  readonly ends: RunEnd[] = [];
+  readonly ends: SegmentEnd[] = [];
   /** False if an end of the segment cannot slide, e.g. its node is missing or the side is too short. */
   movable = true;
 
@@ -40,11 +42,11 @@ export class Run {
     this.width = width;
   }
 
-  /** The orthogonal segments of all routes as runs; the routes are used as they are, not copied. */
-  static allOf(routes: ReadonlyMap<string, Point[]>, model: GraphModel): Run[] {
+  /** All routes split into their orthogonal segments (others are skipped); the routes are used as they are, not copied. */
+  static allOf(routes: ReadonlyMap<string, Point[]>, model: GraphModel): Segment[] {
     const nodes = nodesById(model);
     const edges = new Map(model.edges.map((edge) => [edge.id, edge]));
-    const runs: Run[] = [];
+    const segments: Segment[] = [];
     for (const [edgeId, route] of routes) {
       const edge = edges.get(edgeId);
       const last = route.length - 1;
@@ -53,54 +55,55 @@ export class Run {
         const b = route[index + 1]!;
         const axis = a.x === b.x ? 'x' : a.y === b.y ? 'y' : undefined;
         if (!axis) continue; // not orthogonal
-        const run = new Run(edgeId, route, index, axis, edge?.width || 0);
+        const segment = new Segment(edgeId, route, index, axis, edge?.width || 0);
         const endNodes = [index === 0 && edge?.source, index + 1 === last && edge?.target];
         endNodes.forEach((nodeId, i) => {
           if (nodeId === false) return; // not an end segment on this side
           const node = nodeId === undefined ? undefined : nodes.get(nodeId);
-          if (node) run.ends.push({ node, point: i === 0 ? 0 : last });
-          else run.movable = false; // unknown node: leave the segment where it is
+          if (node) segment.ends.push({ node, point: i === 0 ? 0 : last });
+          else segment.movable = false; // unknown node: leave the segment where it is
         });
-        run.movable &&= run.ends.every((end) => run.sideInterval(end) !== undefined);
-        runs.push(run);
+        segment.movable &&= segment.ends.every((end) => segment.sideInterval(end) !== undefined);
+        segments.push(segment);
       }
     }
-    return runs;
+    return segments;
   }
 
-  /** Where the run lies on its axis. */
+  /** Where the segment lies on its axis: the x of a vertical segment. */
   get position(): number {
     return this.route[this.index]![this.axis];
   }
 
-  /** From where to where the run reaches across its axis. */
-  get extent(): [number, number] {
+  /** From where to where the segment reaches along its length, on the other axis: the y range of a vertical segment. */
+  get span(): [number, number] {
     const along = otherAxis(this.axis);
     const a = this.route[this.index]![along];
     const b = this.route[this.index + 1]![along];
     return a < b ? [a, b] : [b, a];
   }
 
+  /** How long the segment is (px). */
   get length(): number {
-    const [from, to] = this.extent;
+    const [from, to] = this.span;
     return to - from;
   }
 
-  /** Length along which this run and a parallel one of another edge lie so close that their strokes touch. */
-  overlapLength(other: Run): number {
+  /** Length along which this segment and a parallel one of another edge lie so close that their strokes touch. */
+  overlapLength(other: Segment): number {
     if (this.axis !== other.axis || this.edgeId === other.edgeId) return 0;
     if (Math.abs(this.position - other.position) >= (this.width + other.width) / 2) return 0;
-    const [a1, a2] = this.extent;
-    const [b1, b2] = other.extent;
+    const [a1, a2] = this.span;
+    const [b1, b2] = other.span;
     const shared = Math.min(a2, b2) - Math.max(a1, b1);
-    return shared > MIN_SHARED_RUN ? shared : 0;
+    return shared > MIN_SHARED_LENGTH ? shared : 0;
   }
 
-  /** True if this run and a perpendicular one of another edge cross in an X (not touching at an end). */
-  crosses(other: Run): boolean {
+  /** True if this segment and a perpendicular one of another edge cross in an X (not touching at an end). */
+  crosses(other: Segment): boolean {
     if (this.axis === other.axis || this.edgeId === other.edgeId) return false;
-    const [aFrom, aTo] = this.extent;
-    const [bFrom, bTo] = other.extent;
+    const [aFrom, aTo] = this.span;
+    const [bFrom, bTo] = other.span;
     return aFrom < other.position && other.position < aTo && bFrom < this.position && this.position < bTo;
   }
 
@@ -109,7 +112,7 @@ export class Run {
    * is on, with the whole stroke inside the side. Undefined if the end point is
    * not on a side across the segment or the side is too short for the stroke.
    */
-  sideInterval({ node, point }: RunEnd): [number, number] | undefined {
+  sideInterval({ node, point }: SegmentEnd): [number, number] | undefined {
     const { axis } = this;
     const along = otherAxis(axis);
     const end = this.route[point]!;

@@ -822,9 +822,9 @@ Aufbau des Quellcodes (eine Klasse pro Datei, nach Aufgabe in Ordnern):
 | `routing/routing-backend.ts` | – | Schnittstelle `RoutingBackend`: wo geroutet wird. Das Plugin kennt nur sie. |
 | `routing/local-router.ts` | `LocalRouter` | `RoutingBackend` im Haupt-Thread, mit `EdgeRouter`. |
 | `postprocess/simplify.ts` | – | Rundet libavoids Punkte und entfernt überflüssige. |
-| `postprocess/run.ts` | `Run` | Ein gerades Stück einer Route: Lage, Ausdehnung, Überlappung, Kreuzung, Spielraum an der Knotenseite. |
-| `postprocess/run-index.ts` | `RunIndex` | Räumlicher Index der Runs, damit Nachbarn ohne Vergleich aller Paare gefunden werden. |
-| `postprocess/route-geometry.ts` | `RouteGeometry` | Routen in Runs zerlegt, mit Index; gemeinsame Abfragen (Bündel, freie Intervalle, Hindernisse neben einem Run). Wird pro libavoid-Lauf einmal gebaut. |
+| `postprocess/segment.ts` | `Segment` | Ein gerades Stück einer Route: Lage, Ausdehnung, Überlappung, Kreuzung, Spielraum an der Knotenseite. |
+| `postprocess/segment-index.ts` | `SegmentIndex` | Räumlicher Index der Segmente, damit Nachbarn ohne Vergleich aller Paare gefunden werden. |
+| `postprocess/route-geometry.ts` | `RouteGeometry` | Routen in Segmente zerlegt, mit Index; gemeinsame Abfragen (Bündel, freie Intervalle, Hindernisse neben einem Segment). Wird pro libavoid-Lauf einmal gebaut. |
 | `postprocess/overlap-separator.ts` | – | `separateOverlapsIn(geometry)`: schiebt übereinanderliegende Segmente auseinander (siehe 10.4). |
 | `postprocess/detour-finder.ts` | – | `findDetoursIn(geometry)`: Umwege für überfüllte Lücken (siehe 10.4). |
 | `postprocess/route-quality.ts` | – | `measureQuality(geometry)`: Überlappung, Kreuzungen und Länge, zum Vergleichen. |

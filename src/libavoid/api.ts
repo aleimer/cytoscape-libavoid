@@ -57,7 +57,7 @@ export interface ShapeRef {
   id(): number;
 }
 
-/** Owned and freed by its shape. */
+/** A point on a shape's border that connectors attach to; owned and freed by its shape. */
 export interface ShapeConnectionPin {
   setExclusive(exclusive: boolean): void;
 }

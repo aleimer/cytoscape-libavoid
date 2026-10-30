@@ -18,10 +18,12 @@ import type { RoutingOptions } from './options';
 import { simplify } from '../postprocess/simplify';
 
 /**
- * Pins sit in the middle of a node's sides; libavoid picks among those of the edge
- * end's pin class. A pin class is the set of sides an edge end may use, as bits.
+ * Pins sit in the middle of a node's sides. An edge end's pin class is the sum of
+ * the bits of the sides it may use (15 = all four); every obstacle gets the pins
+ * of each class its edges use, and libavoid picks one of the class's pins.
  */
 const SIDE_BIT: Record<Side, number> = { top: 1, right: 2, bottom: 4, left: 8 };
+/** With `idealNudgingDistance: 'auto'`: the smallest gap between parallel segments (px), also for thin edges. */
 const MIN_NUDGING_DISTANCE = 4;
 /**
  * Share of the edges that may get a detour, those passing through over the longest
@@ -35,7 +37,7 @@ const MIN_SHAPE_SIZE = 1;
 const MIN_OVERLAP_GAIN = 0.2;
 /** ...are at most 10 % longer... */
 const MAX_EXTRA_LENGTH = 0.1;
-/** ...and cross at most 50 % + 5 times more often. */
+/** ...and cross at most 50 % more often, plus 5 crossings (for graphs with few). */
 const MAX_EXTRA_CROSSINGS = 0.5;
 const EXTRA_CROSSINGS_ALLOWED = 5;
 
@@ -51,7 +53,10 @@ export class EdgeRouter {
   }
 
   /**
-   * Edges with a missing endpoint and loops are skipped.
+   * Routes once with libavoid, looks for edges that do not fit into crowded gaps
+   * and spreads apart overlapping segments. If some edges need a detour, routes a
+   * second time through checkpoints in wider gaps and keeps whichever result is
+   * better (see isBetter()). Loops and edges with a missing end are skipped.
    *
    * @returns edge id -> route points, from the source end to the target end
    */
@@ -73,6 +78,7 @@ export class EdgeRouter {
     return findDetoursIn(geometry, { spacing: edgeSpacing, clearance: shapeBufferDistance, maxDetours });
   }
 
+  /** With `separateOverlaps`: spreads apart overlapping segments, in place. */
   private separate(geometry: RouteGeometry): void {
     if (this.options.separateOverlaps) separateOverlapsIn(geometry, this.options.edgeSpacing);
   }
@@ -97,6 +103,7 @@ export class EdgeRouter {
     }
   }
 
+  /** libavoid's parameters from the options; the raw `routingParameters` / `routingOptions` win. */
   private configure(session: LibavoidSession, edges: GraphEdge[]): void {
     const { options } = this;
     const widest = edges.reduce((max, edge) => Math.max(max, edge.width || 0), 0);
@@ -108,8 +115,8 @@ export class EdgeRouter {
     session.setParameter('shapeBufferDistance', options.shapeBufferDistance);
     session.setParameter('idealNudgingDistance', nudgingDistance);
     session.setOption('nudgeOrthogonalSegmentsConnectedToShapes', options.nudgeConnectedSegments);
-    // libavoid's default; costs ~98% of the routing time (64 nodes / 112 edges:
-    // 3.4 s -> 50 ms) for slightly fewer bends.
+    // on in libavoid by default; it takes ~98 % of the routing time (64 nodes /
+    // 112 edges: 3.4 s instead of 50 ms) for slightly fewer bends
     session.setOption('performUnifyingNudgingPreprocessingStep', false);
 
     // raw values last, so they override everything above
@@ -145,7 +152,11 @@ export class EdgeRouter {
     return shapes;
   }
 
-  /** `model.edges` must be routable, see routableEdges(). */
+  /**
+   * A connector per edge, from a pin class of its source to one of its target. An
+   * endpoint-only node has no shape: the edge ends in the middle of its (allowed)
+   * side facing the other end. `model.edges` must be routable, see routableEdges().
+   */
   private addConnectors(
     session: LibavoidSession,
     shapes: Map<string, ShapeRef>,
@@ -155,7 +166,6 @@ export class EdgeRouter {
     const end = (node: GraphNode, sides: Side[] | undefined, other: GraphNode): ConnEnd => {
       const shape = shapes.get(node.id);
       if (shape) return session.shapeEnd(shape, pinClass(sides));
-      // an endpoint-only node has no shape: the edge ends on the (allowed) side facing its other end
       return session.pointEnd(sideMiddle(node, sideFacing(node, other, sides?.length ? sides : SIDES)));
     };
     const connectors = new Map<string, ConnRef>();
@@ -169,7 +179,7 @@ export class EdgeRouter {
   }
 }
 
-/** The pin class of an edge end that may use these sides; none = all four. */
+/** The pin class of an edge end that may use these sides; none (or only invalid ones) = all four. */
 function pinClass(sides: readonly Side[] | undefined): number {
   const allowed = sides?.length ? sides : SIDES;
   return allowed.reduce((bits, side) => bits | (SIDE_BIT[side] ?? 0), 0) || pinClass(undefined);

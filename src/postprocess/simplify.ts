@@ -4,12 +4,14 @@ import type { Point } from '../shared/geometry';
 
 /** libavoid returns float noise such as 12.000000001; coordinates are rounded to 1/1000 px. */
 const COORDINATE_PRECISION = 1000;
+/** A point this close to the line through its neighbours lies on it. */
 const COLLINEAR_TOLERANCE = 1e-6;
 
+/** Rounds to COORDINATE_PRECISION; SegmentIndex also rounds the positions it moves segments to. */
 export const roundCoordinate = (value: number): number =>
   Math.round(value * COORDINATE_PRECISION) / COORDINATE_PRECISION;
 
-/** Rounds away float noise and drops duplicate points and points in the middle of a straight run. */
+/** Rounds away float noise and drops duplicate points and points in the middle of a straight segment. */
 export function simplify(points: readonly Point[]): Point[] {
   const result: Point[] = [];
   for (const { x, y } of points) {

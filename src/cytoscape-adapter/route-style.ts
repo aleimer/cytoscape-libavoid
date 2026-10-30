@@ -9,6 +9,7 @@
 
 import type { Point } from '../shared/geometry';
 
+/** The style bypass that makes Cytoscape draw an edge along a route. */
 export interface EdgeSegmentStyle {
   'curve-style': 'segments' | 'round-segments';
   'edge-distances': 'endpoints';
@@ -23,6 +24,7 @@ export interface EdgeSegmentStyle {
   'text-margin-y'?: number;
 }
 
+/** Every property routeToEdgeStyle() may set, to remove them again. */
 export const STYLE_PROPS: ReadonlyArray<keyof EdgeSegmentStyle> = [
   'curve-style',
   'edge-distances',
@@ -36,6 +38,7 @@ export const STYLE_PROPS: ReadonlyArray<keyof EdgeSegmentStyle> = [
   'text-margin-y',
 ];
 
+/** How routes are drawn; the options of the same name of `cy.libavoid()`. */
 export interface EdgeStyleOptions {
   /** 0 = sharp corners, > 0 = rounded corners with this radius (px). */
   cornerRadius: number;
@@ -51,11 +54,16 @@ const defaultStyleOptions: EdgeStyleOptions = { cornerRadius: 0, labelPosition: 
 
 /** Weights are fractions of the edge length, so they keep more digits than the route coordinates. */
 const STYLE_PRECISION = 10000;
+/** Routes whose start and end are closer than this (squared, px²) cannot be expressed as segments. */
 const MIN_LENGTH_SQUARED = 1e-6;
 
 const format = (value: number): string => String(Math.round(value * STYLE_PRECISION) / STYLE_PRECISION);
 
 /**
+ * The style bypass that makes Cytoscape draw an edge along `points`: the endpoints
+ * become `source-endpoint` / `target-endpoint` relative to the node centres, the
+ * points in between segment weights and distances (see the top of this file).
+ *
  * @param points        route incl. both endpoints
  * @param sourceCentre  position of the source node
  * @param targetCentre  position of the target node
@@ -114,12 +122,12 @@ export function routeToEdgeStyle(
  * middle between the two middle ones (with rounded corners a point on the arc
  * near it, which is ignored here).
  *
- * @param segmentPoints the segment points Cytoscape gets, without the endpoints
+ * @param bendPoints the points between the endpoints, which Cytoscape calls segment points
  */
-export function labelOffset(points: readonly Point[], segmentPoints: readonly Point[]): Point {
-  const count = segmentPoints.length;
-  const a = segmentPoints[Math.floor((count - 1) / 2)];
-  const b = segmentPoints[Math.floor(count / 2)];
+export function labelOffset(points: readonly Point[], bendPoints: readonly Point[]): Point {
+  const count = bendPoints.length;
+  const a = bendPoints[Math.floor((count - 1) / 2)];
+  const b = bendPoints[Math.floor(count / 2)];
   if (!a || !b) return { x: 0, y: 0 };
   const cytoscapeMiddle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 

@@ -190,7 +190,7 @@ test('steel plant: crowded gaps between nodes one grid step apart', () => {
   assert.equal(improved.size, model.edges.length, 'every flow is routed');
   const before = routeQuality(plain, model);
   const after = routeQuality(improved, model);
-  // libavoid alone stacks ~70,000 px, a few short runs in the narrowest gaps remain
+  // libavoid alone stacks ~70,000 px, a few short segments in the narrowest gaps remain
   assert.ok(after.overlap < 0.01 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
   for (const route of improved.values()) assertOrthogonal(route);
   assertNoNodeHits(model, improved);

@@ -20,7 +20,7 @@ export interface LibavoidOptions extends RoutingOptions {
   avoidLib?: Avoid | undefined;
   /**
    * Route in this Web Worker (running routing.worker.ts) instead of the main thread,
-   * so large graphs do not block rendering. `route()` is then not available; use `refresh()`.
+   * so large graphs do not block rendering. The plugin does not terminate it.
    */
   worker?: RoutingWorker | undefined;
   /** Selector of the edges to route. @default 'edge' */
@@ -35,7 +35,11 @@ export interface LibavoidOptions extends RoutingOptions {
   obstacles: string;
   /** Count node labels as part of the obstacle. @default false */
   includeLabels: boolean;
-  /** Stroke width of an edge, used to space parallel segments. @default the `width` style */
+  /**
+   * Stroke width of an edge (px), used to space parallel segments. The default reads
+   * the drawn `width` style, so routing spaces edges as they are drawn.
+   * @default the `width` style
+   */
   edgeWidth: (edge: EdgeSingular) => number;
   /**
    * The sides of its nodes an edge may leave from (`source`) and end at (`target`): one
@@ -58,9 +62,9 @@ export interface LibavoidOptions extends RoutingOptions {
   rerouteOnDrag: boolean;
   /**
    * With `rerouteOnDrag`: minimum pause between re-routes while a node is dragged (ms).
-   * `'auto'` = as long as the last run took, so routing uses at most about half of the
-   * time and dragging stays smooth on large graphs (with a `worker`: no pause, the
-   * next run starts when the worker is done). 0 = re-route on every frame.
+   * `'auto'` = as long as the last run kept the main thread busy, so routing uses at
+   * most about half of it and dragging stays smooth on large graphs (with a `worker`:
+   * no pause, the next run starts when the worker is done). 0 = re-route on every frame.
    * @default 'auto'
    */
   dragRouteInterval: number | 'auto';
@@ -83,19 +87,23 @@ export interface LibavoidOptions extends RoutingOptions {
 
 /** Result of the `edgeSides` option. */
 export interface EdgeSides {
+  /** The side(s) of the source node the edge may leave from; missing = all four. */
   source?: Side | readonly Side[] | undefined;
+  /** The side(s) of the target node the edge may end at; missing = all four. */
   target?: Side | readonly Side[] | undefined;
 }
 
 /** Payload of the `avoidrouted` event. */
 export interface RoutedEventInfo {
+  /** Number of routed edges. */
   edges: number;
-  /** Time spent in libavoid. */
+  /** How long routing took (ms): libavoid plus the post-processing, in this thread or the worker. */
   routingMs: number;
   /** From the start of the run to the styled edges; with a worker incl. the round trip. */
   totalMs: number;
 }
 
+/** The defaults of LibavoidOptions, frozen; `cy.libavoid(options)` merges `options` onto them. */
 export const defaults: Readonly<LibavoidOptions> = Object.freeze({
   ...defaultRoutingOptions,
   edges: 'edge',

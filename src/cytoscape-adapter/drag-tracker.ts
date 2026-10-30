@@ -22,6 +22,7 @@ export class DragTracker {
     return false;
   }
 
+  /** For `grab`. */
   readonly onGrab = (event: EventObject): void => {
     this.grabbed.add(event.target as NodeSingular);
   };

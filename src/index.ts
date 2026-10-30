@@ -1,14 +1,17 @@
 // Public API: registers `cy.libavoid()` and exports what an app needs. Other
 // building blocks are imported from their files.
 //
+//   cytoscape-adapter/   the only folder that knows Cytoscape: LibavoidRouting,
+//                        options, edge styles, scheduling
+//   worker/              routing in a Web Worker (entry: routing.worker.ts)
+//   routing/             EdgeRouter: graph model -> routes; LocalRouter and the
+//                        RoutingBackend interface it shares with WorkerRouter
+//   postprocess/         separating overlapping edges, detours, route quality
+//   libavoid/            loading libavoid-js and wrapping its API
 //   shared/              geometry, the plain graph model, messages and option
 //                        checks; used by all folders, imports nothing else
-//   cytoscape-adapter/   the only folder that knows Cytoscape: LibavoidRouting,
-//                        options, edge styles
-//   routing/       EdgeRouter: graph model -> routes, independent of Cytoscape
-//   postprocess/   separating overlapping edges, detours, route quality
-//   libavoid/      loading libavoid-js and wrapping its API
-//   worker/        routing in a Web Worker (entry: routing.worker.ts)
+//
+// Each folder only imports from the ones below it (npm run deps:check).
 
 import type cytoscapeFactory from 'cytoscape';
 import type { Core } from 'cytoscape';

@@ -8,12 +8,16 @@ import type { EdgeSegmentStyle, EdgeStyleOptions } from './route-style';
 /** Applies routes to Cytoscape edges as style bypasses, and removes them again. */
 export class EdgeStyler {
   private readonly cy: Core;
-  /** Edge id -> element and style last applied to it, to skip edges whose route did not change. */
+  /**
+   * Edge id -> the style last applied, to skip edges whose route did not change, and
+   * the element it was applied to: an edge removed and added again with the same id
+   * is a new element without the style.
+   */
   private readonly applied = new Map<string, { element: unknown; style: EdgeSegmentStyle; styleKey: string }>();
   /**
-   * Edge id -> the app's own bypasses of the hiding properties, restored when it is
-   * shown, for the edges hidden by hide() until a route for their nodes' current
-   * positions is applied.
+   * The edges hidden by hide(), until a route for their nodes' current positions
+   * is applied. Value: the app's own bypasses of HIDING_PROPERTIES, restored when
+   * the edge is shown again.
    */
   private readonly hidden = new Map<string, Partial<Record<HidingProperty, string>>>();
 
@@ -73,6 +77,7 @@ export class EdgeStyler {
     });
   }
 
+  /** reveal() inside a running cy.batch(). */
   private revealInBatch(nodePositions: ReadonlyMap<string, Point>): void {
     for (const edgeId of [...this.hidden.keys()]) {
       const edge = this.cy.getElementById(edgeId);
@@ -118,6 +123,7 @@ export class EdgeStyler {
     this.applied.set(edgeId, { element: edge[0], style, styleKey });
   }
 
+  /** Removes the route style of an edge, and shows it again if it is hidden. */
   private restore(edgeId: string): void {
     const edge = this.cy.getElementById(edgeId);
     if (edge.nonempty()) edge.removeStyle(STYLE_PROPS.join(' '));

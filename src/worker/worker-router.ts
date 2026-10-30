@@ -18,6 +18,7 @@ export class WorkerRouter implements RoutingBackend {
   readonly blocksThread = false;
   private readonly worker: RoutingWorker;
   private readonly wasmUrl: string | undefined;
+  /** The unanswered requests by id. */
   private readonly pending = new Map<number, PromiseWithCallbacks<RouteResult>>();
   private disposed = false;
 
@@ -61,8 +62,9 @@ export class WorkerRouter implements RoutingBackend {
   }
 
   /**
-   * Without this a worker that failed to load would leave every request, and with
-   * it the plugin, waiting forever. The event does not say which request failed.
+   * `error` / `messageerror`: rejects every request in flight, as the event does not
+   * say which one failed. Without this a worker that failed to load would leave the
+   * requests, and with them the plugin, waiting forever.
    */
   private readonly onError = (event: Event): void => {
     const detail = 'message' in event && typeof event.message === 'string' && event.message ? `: ${event.message}` : '';

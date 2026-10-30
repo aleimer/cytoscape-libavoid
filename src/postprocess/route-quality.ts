@@ -18,12 +18,12 @@ export function measureQuality(geometry: RouteGeometry): RouteQuality {
   let overlap = 0;
   let crossings = 0;
   let length = 0;
-  for (const run of geometry.runs) {
-    length += run.length;
-    for (const near of geometry.overlapping(run)) overlap += run.overlapLength(near) / 2; // each pair is seen twice
-    if (run.axis === 'x') {
-      const [from, to] = run.extent;
-      for (const horizontal of geometry.between('y', from, to)) if (run.crosses(horizontal)) crossings++;
+  for (const segment of geometry.segments) {
+    length += segment.length;
+    for (const near of geometry.overlapping(segment)) overlap += segment.overlapLength(near) / 2; // each pair is seen twice
+    if (segment.axis === 'x') {
+      const [from, to] = segment.span;
+      for (const horizontal of geometry.between('y', from, to)) if (segment.crosses(horizontal)) crossings++;
     }
   }
   return { overlap, crossings, length };

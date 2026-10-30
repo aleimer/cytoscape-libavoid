@@ -3,8 +3,8 @@
 // where many edges share a narrow gap between nodes it stacks them on the same
 // line. Three steps work on a RouteGeometry to deal with that:
 //
-// - findDetoursIn() (detour-finder.ts) finds gaps ("streets") that more edges
-//   use than fit into them and picks checkpoints in wider streets for the edges
+// - findDetoursIn() (detour-finder.ts) finds gaps between nodes that more edges
+//   use than fit into them and picks checkpoints in wider gaps for the edges
 //   that only pass through; EdgeRouter routes again through them.
 // - separateOverlapsIn() (overlap-separator.ts) spreads the remaining
 //   overlapping segments apart by their widths, using part of the clearance if
@@ -20,44 +20,44 @@ import { extentOf, otherAxis } from '../shared/geometry';
 import type { Axis, Point } from '../shared/geometry';
 import { isObstacle } from '../shared/graph';
 import type { GraphModel, GraphNode } from '../shared/graph';
-import { NODE_MARGIN, Run } from './run';
-import { RunIndex } from './run-index';
+import { NODE_MARGIN, Segment } from './segment';
+import { SegmentIndex } from './segment-index';
 
-/** Routes split into runs, with a spatial index and the queries the post-processing steps share. */
+/** Routes split into segments, with a spatial index and the queries the post-processing steps share. */
 export class RouteGeometry {
   readonly model: GraphModel;
-  /** A copy of the routes; moving runs changes it, the input stays as it is. */
+  /** A copy of the routes; moving segments changes it, the input stays as it is. */
   readonly routes: Map<string, Point[]>;
-  readonly runs: readonly Run[];
-  private readonly index: RunIndex;
+  readonly segments: readonly Segment[];
+  private readonly index: SegmentIndex;
 
   constructor(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel) {
     this.model = model;
     this.routes = new Map([...routes].map(([edgeId, points]) => [edgeId, points.map((point) => ({ ...point }))]));
-    this.runs = Run.allOf(this.routes, model);
-    this.index = new RunIndex(this.runs);
+    this.segments = Segment.allOf(this.routes, model);
+    this.index = new SegmentIndex(this.segments);
   }
 
-  /** Runs of other edges whose strokes overlap this one. */
-  overlapping(run: Run): Run[] {
-    return this.index.overlapping(run);
+  /** Segments of other edges whose strokes overlap this one. */
+  overlapping(segment: Segment): Segment[] {
+    return this.index.overlapping(segment);
   }
 
-  /** Runs on `axis` positioned between `low` and `high` (and a few just outside). */
-  between(axis: Axis, low: number, high: number): Run[] {
+  /** Segments on `axis` positioned between `low` and `high` (and a few just outside). */
+  between(axis: Axis, low: number, high: number): Segment[] {
     return this.index.between(axis, low, high);
   }
 
-  /** Moves a run to a new position on its axis; its neighbouring segments stretch. */
-  move(run: Run, position: number): void {
-    this.index.move(run, position);
+  /** Moves a segment to a new position on its axis; its neighbouring segments stretch. */
+  move(segment: Segment, position: number): void {
+    this.index.move(segment, position);
   }
 
-  /** Groups of runs that overlap each other, directly or through other runs of the group. */
-  overlappingBundles(): Run[][] {
-    const bundleOf = new Map<Run, Run[]>();
-    const bundles: Run[][] = [];
-    for (const start of this.runs) {
+  /** Groups of segments that overlap each other, directly or through other segments of the group. */
+  overlappingBundles(): Segment[][] {
+    const bundleOf = new Map<Segment, Segment[]>();
+    const bundles: Segment[][] = [];
+    for (const start of this.segments) {
       if (bundleOf.has(start)) continue;
       const bundle = [start];
       bundleOf.set(start, bundle);
@@ -74,12 +74,12 @@ export class RouteGeometry {
   }
 
   /**
-   * The obstacles beside a run: those that reach into its extent, grown by
-   * `clearance`. Moving the run across its axis would hit them.
+   * The obstacles beside a segment: those that reach into its span, grown by
+   * `clearance`. Moving the segment across its axis would hit them.
    */
-  obstaclesBeside(run: Run, clearance: number): GraphNode[] {
-    const along = otherAxis(run.axis);
-    const [from, to] = run.extent;
+  obstaclesBeside(segment: Segment, clearance: number): GraphNode[] {
+    const along = otherAxis(segment.axis);
+    const [from, to] = segment.span;
     return this.model.nodes.filter((node) => {
       if (!isObstacle(node)) return false;
       const [low, high] = extentOf(node, along, clearance);
@@ -88,13 +88,13 @@ export class RouteGeometry {
   }
 
   /**
-   * Where a run may be placed along its axis without entering a node, without
+   * Where a segment may be placed along its axis without entering a node, without
    * reversing its neighbouring segments and without passing the ones beyond them.
-   * End segments also stay on the side of their node. Fixed runs stay where they are.
+   * End segments also stay on the side of their node. Fixed segments stay where they are.
    */
-  freeInterval(run: Run): [number, number] {
-    const { axis, route, index, position } = run;
-    if (!run.movable) return [position, position];
+  freeInterval(segment: Segment): [number, number] {
+    const { axis, route, index, position } = segment;
+    if (!segment.movable) return [position, position];
     let low = -Infinity;
     let high = Infinity;
 
@@ -107,16 +107,16 @@ export class RouteGeometry {
       else return [position, position];
     }
 
-    for (const end of run.ends) {
-      const [sideLow, sideHigh] = run.sideInterval(end)!;
+    for (const end of segment.ends) {
+      const [sideLow, sideHigh] = segment.sideInterval(end)!;
       low = Math.max(low, sideLow);
       high = Math.min(high, sideHigh);
     }
 
-    const attached = new Set(run.ends.map((end) => end.node));
-    const clearance = run.width / 2 + NODE_MARGIN;
-    // incl. the nodes at its end points where the neighbours run along them
-    for (const node of this.obstaclesBeside(run, clearance)) {
+    const attached = new Set(segment.ends.map((end) => end.node));
+    const clearance = segment.width / 2 + NODE_MARGIN;
+    // incl. the nodes at its end points where the neighbouring segments lie along them
+    for (const node of this.obstaclesBeside(segment, clearance)) {
       if (attached.has(node)) continue;
       const [nodeLow, nodeHigh] = extentOf(node, axis, clearance);
       if (nodeHigh <= position) low = Math.max(low, nodeHigh);

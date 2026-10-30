@@ -1,4 +1,5 @@
-// The options of EdgeRouter, shared by the plugin and the worker.
+// The options of EdgeRouter, shared by the plugin and the worker. They are
+// plain data, so they can be posted to a worker.
 
 import { checkNonNegative, pluginError } from '../shared/errors';
 import { ROUTING_OPTION_NAMES, ROUTING_PARAMETER_NAMES } from '../libavoid/api';
@@ -7,7 +8,7 @@ import type { RoutingOptionName, RoutingParameterName } from '../libavoid/api';
 export interface RoutingOptions {
   /** Gap between neighbouring parallel edges (px). @default 2 */
   edgeSpacing: number;
-  /** Clearance kept around nodes (px). @default 12 */
+  /** Distance edges keep from the nodes they pass (px). @default 12 */
   shapeBufferDistance: number;
   /** Distance between parallel segments (px); `'auto'` = widest edge + `edgeSpacing`. @default 'auto' */
   idealNudgingDistance: number | 'auto';
@@ -16,7 +17,7 @@ export interface RoutingOptions {
   /**
    * Spread apart parallel segments that libavoid leaves on top of each other, e.g.
    * where many edges share a narrow gap between nodes or end at the same pin
-   * (see postprocess/).
+   * (see postprocess/overlap-separator.ts).
    * @default true
    */
   separateOverlaps: boolean;
@@ -37,6 +38,7 @@ export interface RoutingOptions {
   routingOptions: Partial<Record<RoutingOptionName, boolean>>;
 }
 
+/** The defaults of RoutingOptions, frozen. */
 export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
   edgeSpacing: 2,
   shapeBufferDistance: 12,
@@ -71,6 +73,10 @@ export function resolveRoutingOptions<T extends RoutingOptions>(
   return Object.freeze(merged);
 }
 
+/**
+ * Throws for invalid values, and for names libavoid does not know: without the
+ * check those would only fail once libavoid is loaded and a run starts.
+ */
 function checkRoutingOptions(options: RoutingOptions): void {
   checkNonNegative('edgeSpacing', options.edgeSpacing);
   checkNonNegative('shapeBufferDistance', options.shapeBufferDistance);

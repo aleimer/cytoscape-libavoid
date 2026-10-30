@@ -1,6 +1,7 @@
 // Plain geometry shared by all parts of the plugin: points, sides and axes of
 // axis-aligned rectangles. Knows nothing about graphs, Cytoscape or libavoid.
 
+/** A position in model coordinates, as Cytoscape's: y grows downwards. */
 export interface Point {
   x: number;
   y: number;
@@ -16,15 +17,21 @@ export interface Rect {
   height: number;
 }
 
+/** A side of a rectangle; `top` is the one with the smaller y. */
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 
 export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
+/** For values from outside, e.g. the `edgeSides` option. */
 export const isSide = (value: unknown): value is Side => SIDES.includes(value as Side);
 
-/** x: the coordinate a vertical segment can move along; y: the same for a horizontal one. */
+/**
+ * A coordinate axis. Post-processing names a segment's axis by the coordinate it
+ * can be moved along: x for a vertical segment, y for a horizontal one.
+ */
 export type Axis = 'x' | 'y';
 
+/** y for x and x for y, e.g. the direction a run extends in from the axis it moves along. */
 export const otherAxis = (axis: Axis): Axis => (axis === 'x' ? 'y' : 'x');
 
 /** Half the size of a rectangle on an axis. */
@@ -36,7 +43,11 @@ export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high
   return [rect[axis] - reach, rect[axis] + reach];
 }
 
-/** Of the `allowed` sides of `rect`, the one that faces `towards` most, relative to its proportions. */
+/**
+ * Of the `allowed` sides of `rect`, the one that faces `towards` most. Distances
+ * count in half sizes, so a wide rectangle uses its top or bottom side unless the
+ * point is clearly beside it. Ties go to the side listed first in `allowed`.
+ */
 export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] = SIDES): Side {
   const dx = (towards.x - rect.x) / (halfSize(rect, 'x') || 1);
   const dy = (towards.y - rect.y) / (halfSize(rect, 'y') || 1);

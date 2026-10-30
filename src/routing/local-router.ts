@@ -1,4 +1,4 @@
-// Routing in this thread, behind the same interface as a worker.
+// Routing in this thread, behind the same interface as routing in a worker.
 
 import { pluginError } from '../shared/errors';
 import type { GraphModel } from '../shared/graph';
@@ -18,6 +18,7 @@ export class LocalRouter implements RoutingBackend {
     this.avoid = Promise.resolve(avoid);
   }
 
+  /** Routes with EdgeRouter once libavoid is loaded; rejects if routing fails or after dispose(). */
   async route(model: GraphModel, options: RoutingOptions): Promise<RouteResult> {
     const avoid = await this.avoid;
     if (this.disposed) throw pluginError('router disposed');
@@ -26,7 +27,10 @@ export class LocalRouter implements RoutingBackend {
     return { routes, routingMs: performance.now() - start };
   }
 
-  /** A run is synchronous once libavoid is loaded, so only one waiting for it is affected. */
+  /**
+   * Later requests reject, and so do those still waiting for libavoid to load.
+   * A run that has started cannot be stopped: it is synchronous.
+   */
   dispose(): void {
     this.disposed = true;
   }

@@ -2,6 +2,7 @@
 // dragged after a rest (`dragRouteDelay`) and a pause (`dragRouteInterval`).
 // Knows nothing about Cytoscape or routing, LibavoidRouting supplies both.
 
+/** What the scheduler asks LibavoidRouting each time, so changed options apply at once. */
 export interface ScheduleTiming {
   /** A node is being dragged. */
   dragging(): boolean;
@@ -11,6 +12,7 @@ export interface ScheduleTiming {
   pause(): number;
 }
 
+/** requestAnimationFrame in the browser; a timer in Node.js (tests). */
 const nextFrame: (callback: () => void) => void =
   typeof requestAnimationFrame === 'function'
     ? (callback) => requestAnimationFrame(callback)
@@ -20,7 +22,7 @@ const nextFrame: (callback: () => void) => void =
 export class RouteScheduler {
   private readonly timing: ScheduleTiming;
   private readonly run: () => void;
-  /** A run is waiting for its frame (or pause). */
+  /** A run is waiting for its frame (or its pause); further schedule() calls join it. */
   private pending = false;
   /** Waits for the changes to rest while dragging; restarted by every schedule(). */
   private restTimer: ReturnType<typeof setTimeout> | undefined;
@@ -31,6 +33,10 @@ export class RouteScheduler {
     this.run = run;
   }
 
+  /**
+   * Asks for a run. Without a drag it comes in the next frame. While dragging it
+   * waits until no schedule() call came for `restDelay()`, then for `pause()`.
+   */
   schedule(): void {
     if (this.stopped) return;
     clearTimeout(this.restTimer);

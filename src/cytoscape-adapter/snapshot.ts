@@ -6,16 +6,22 @@ import type { Point, Side } from '../shared/geometry';
 import type { GraphEdge, GraphModel, GraphNode } from '../shared/graph';
 import type { LibavoidOptions } from './options';
 
-/** The routing input at one moment; the routes of a run are styled relative to its node positions. */
+/** The routing input at one moment. */
 export interface Snapshot {
   model: GraphModel;
-  /** The model serialised, to compare with the last run. */
+  /** The model serialised: a run is skipped if it equals the last run's key. */
   key: string;
+  /**
+   * Cytoscape's position of every node in the model. EdgeStyler anchors the routes
+   * relative to these, so routes that arrive late (from a worker) still start and
+   * end at their nodes.
+   */
   nodePositions: Map<string, Point>;
   /** Taken while a node is dragged: the run is a quicker draft, see LibavoidRouting. */
   draft: boolean;
 }
 
+/** The options readModel() uses. */
 export type ModelOptions = Pick<LibavoidOptions, 'edges' | 'obstacles' | 'includeLabels' | 'edgeWidth' | 'edgeSides'>;
 
 /**
@@ -74,6 +80,7 @@ function isRoutable(edge: EdgeSingular): boolean {
   );
 }
 
+/** The node's bounding box, so its border (and with `includeLabels` its label) counts. */
 function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boolean): GraphNode {
   const box = node.boundingBox({ includeLabels, includeOverlays: false });
   const centre = { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
