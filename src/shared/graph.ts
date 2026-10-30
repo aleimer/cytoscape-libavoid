@@ -1,10 +1,13 @@
-// The plain graph that routing works on: nodes as rectangles, edges between
-// them. Knows nothing about Cytoscape or libavoid.
+/**
+ * The plain graph that routing works on: nodes as rectangles, edges between
+ * them. Knows nothing about Cytoscape or libavoid.
+ */
 
 import type { Rect, Side } from './geometry';
 
 /** A rectangle that edges route around (an obstacle) and that its own edges start or end at. */
-export interface GraphNode extends Rect {
+export interface GraphNode extends Rect
+{
   id: string;
   /**
    * false: only an endpoint, e.g. a compound node around other nodes. Its edges end
@@ -15,7 +18,8 @@ export interface GraphNode extends Rect {
 }
 
 /** A connection to route between two nodes, given by their ids. */
-export interface GraphEdge {
+export interface GraphEdge
+{
   id: string;
   source: string;
   target: string;
@@ -28,7 +32,8 @@ export interface GraphEdge {
 }
 
 /** The input of routing: positions and sizes in model coordinates. */
-export interface GraphModel {
+export interface GraphModel
+{
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
@@ -41,7 +46,8 @@ export const nodesById = (model: GraphModel): Map<string, GraphNode> =>
   new Map(model.nodes.map((node) => [node.id, node]));
 
 /** The edges routing handles: both ends exist and differ (no loops). */
-export function routableEdges(model: GraphModel): GraphEdge[] {
+export function routableEdges(model: GraphModel): GraphEdge[]
+{
   const nodes = nodesById(model);
   return model.edges.filter((edge) => edge.source !== edge.target && nodes.has(edge.source) && nodes.has(edge.target));
 }

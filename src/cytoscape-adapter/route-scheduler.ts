@@ -1,9 +1,12 @@
-// When to re-route: one run per animation frame at most, and while a node is
-// dragged after a rest (`dragRouteDelay`) and a pause (`dragRouteInterval`).
-// Knows nothing about Cytoscape or routing, LibavoidRouting supplies both.
+/**
+ * When to re-route: one run per animation frame at most, and while a node is
+ * dragged after a rest (`dragRouteDelay`) and a pause (`dragRouteInterval`).
+ * Knows nothing about Cytoscape or routing, LibavoidRouting supplies both.
+ */
 
 /** What the scheduler asks LibavoidRouting each time, so changed options apply at once. */
-export interface ScheduleTiming {
+export interface ScheduleTiming
+{
   /** A node is being dragged. */
   dragging(): boolean;
   /** While dragging: how long the changes must rest before a run (ms); 0 = no rest. */
@@ -13,13 +16,13 @@ export interface ScheduleTiming {
 }
 
 /** requestAnimationFrame in the browser; a timer in Node.js (tests). */
-const nextFrame: (callback: () => void) => void =
-  typeof requestAnimationFrame === 'function'
-    ? (callback) => requestAnimationFrame(callback)
-    : (callback) => setTimeout(callback, 0);
+const nextFrame: (callback: () => void) => void = typeof requestAnimationFrame === 'function' ?
+  (callback) => requestAnimationFrame(callback) :
+  (callback) => setTimeout(callback, 0);
 
 /** Coalesces many schedule() calls into one call of `run`. */
-export class RouteScheduler {
+export class RouteScheduler
+{
   private readonly timing: ScheduleTiming;
   private readonly run: () => void;
   /** A run is waiting for its frame (or its pause); further schedule() calls join it. */
@@ -28,7 +31,8 @@ export class RouteScheduler {
   private restTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
 
-  constructor(timing: ScheduleTiming, run: () => void) {
+  constructor(timing: ScheduleTiming, run: () => void)
+  {
     this.timing = timing;
     this.run = run;
   }
@@ -37,13 +41,19 @@ export class RouteScheduler {
    * Asks for a run. Without a drag it comes in the next frame. While dragging it
    * waits until no schedule() call came for `restDelay()`, then for `pause()`.
    */
-  schedule(): void {
-    if (this.stopped) return;
+  schedule(): void
+  {
+    if (this.stopped)
+    {
+      return;
+    }
     clearTimeout(this.restTimer);
     this.restTimer = undefined;
     const delay = this.timing.dragging() ? this.timing.restDelay() : 0;
-    if (delay > 0) {
-      this.restTimer = setTimeout(() => {
+    if (delay > 0)
+    {
+      this.restTimer = setTimeout(() =>
+      {
         this.restTimer = undefined;
         this.scheduleInFrame();
       }, delay);
@@ -53,22 +63,37 @@ export class RouteScheduler {
   }
 
   /** Drops what is scheduled; later schedule() calls do nothing. */
-  stop(): void {
+  stop(): void
+  {
     this.stopped = true;
     clearTimeout(this.restTimer);
   }
 
-  private scheduleInFrame(): void {
-    if (this.pending) return;
+  private scheduleInFrame(): void
+  {
+    if (this.pending)
+    {
+      return;
+    }
     this.pending = true;
     const runInNextFrame = () =>
-      nextFrame(() => {
+      nextFrame(() =>
+      {
         this.pending = false;
         // a drag that started meanwhile waits for the rest, e.g. after the style events of a mousedown
-        if (!this.stopped && this.restTimer === undefined) this.run();
+        if (!this.stopped && this.restTimer === undefined)
+        {
+          this.run();
+        }
       });
     const pause = this.timing.dragging() ? this.timing.pause() : 0;
-    if (pause > 0) setTimeout(runInNextFrame, pause);
-    else runInNextFrame();
+    if (pause > 0)
+    {
+      setTimeout(runInNextFrame, pause);
+    }
+    else
+    {
+      runInNextFrame();
+    }
   }
 }

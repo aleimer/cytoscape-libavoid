@@ -1,14 +1,18 @@
-// Plain geometry shared by all parts of the plugin: points, sides and axes of
-// axis-aligned rectangles. Knows nothing about graphs, Cytoscape or libavoid.
+/**
+ * Plain geometry shared by all parts of the plugin: points, sides and axes of
+ * axis-aligned rectangles. Knows nothing about graphs, Cytoscape or libavoid.
+ */
 
 /** A position in model coordinates, as Cytoscape's: y grows downwards. */
-export interface Point {
+export interface Point
+{
   x: number;
   y: number;
 }
 
 /** An axis-aligned rectangle around its centre, like a graph node. */
-export interface Rect {
+export interface Rect
+{
   /** Centre x. */
   x: number;
   /** Centre y. */
@@ -38,7 +42,8 @@ export const otherAxis = (axis: Axis): Axis => (axis === 'x' ? 'y' : 'x');
 export const halfSize = (rect: Rect, axis: Axis): number => (axis === 'x' ? rect.width : rect.height) / 2;
 
 /** From where to where a rectangle reaches on an axis, grown by `margin` on both sides. */
-export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high: number] {
+export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high: number]
+{
   const reach = halfSize(rect, axis) + margin;
   return [rect[axis] - reach, rect[axis] + reach];
 }
@@ -48,7 +53,8 @@ export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high
  * count in half sizes, so a wide rectangle uses its top or bottom side unless the
  * point is clearly beside it. Ties go to the side listed first in `allowed`.
  */
-export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] = SIDES): Side {
+export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] = SIDES): Side
+{
   const dx = (towards.x - rect.x) / (halfSize(rect, 'x') || 1);
   const dy = (towards.y - rect.y) / (halfSize(rect, 'y') || 1);
   const facing: Record<Side, number> = { top: -dy, right: dx, bottom: dy, left: -dx };
@@ -56,7 +62,8 @@ export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] 
 }
 
 /** The middle of one side of `rect`. */
-export function sideMiddle(rect: Rect, side: Side): Point {
+export function sideMiddle(rect: Rect, side: Side): Point
+{
   const dx = side === 'left' ? -rect.width / 2 : side === 'right' ? rect.width / 2 : 0;
   const dy = side === 'top' ? -rect.height / 2 : side === 'bottom' ? rect.height / 2 : 0;
   return { x: rect.x + dx, y: rect.y + dy };

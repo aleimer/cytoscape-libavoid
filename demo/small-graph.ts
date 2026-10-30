@@ -42,7 +42,8 @@ export const SMALL_MAX_WIDTH = 18;
 export const SMALL_NODE_SIZE = Object.freeze({ width: 90, height: 70 });
 
 /** The small flow as a routing model. */
-export function smallModel(): GraphModel {
+export function smallModel(): GraphModel
+{
   return {
     nodes: SMALL_NODES.map(([id, , x, y]) => ({ id, x, y, ...SMALL_NODE_SIZE })),
     edges: SMALL_FLOWS.map(([source, target, quantity]) => ({

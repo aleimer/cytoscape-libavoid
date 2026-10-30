@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly)",
+  "homepage": "https://github.com/pkabalski/cytoscape-libavoid#readme",
+  "bugs": {
+    "url": "https://github.com/pkabalski/cytoscape-libavoid/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pkabalski/cytoscape-libavoid.git"
+  },
+  "license": "MIT",
+  "author": "Philipp Kabala",
   "type": "module",
   "scripts": {
     "typecheck": "tsc && tsc -p tsconfig.strict.json",
@@ -11,33 +21,25 @@
     "perf": "node --import ./scripts/ts-resolve.ts bench/perf.ts",
     "build:demo": "node scripts/build-demo.ts",
     "demo": "npm run build:demo && node scripts/serve.ts",
-    "format": "prettier --write \"**/*.{ts,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,json}\"",
+    "format": "dprint fmt",
+    "format:check": "dprint check",
     "quality": "node --import ./scripts/ts-resolve.ts bench/quality.ts",
-    "lint": "npx --yes oxlint@1.88.0 --deny-warnings src test scripts demo bench",
+    "lint": "npx --yes oxlint@1.88.0 --deny-warnings src test scripts demo bench && node scripts/style-check.ts",
     "deps": "node scripts/deps.ts",
-    "deps:check": "node scripts/deps.ts --check"
+    "deps:check": "node scripts/deps.ts --check",
+    "style:check": "node scripts/style-check.ts"
   },
-  "author": "Philipp Kabala",
-  "license": "MIT",
   "dependencies": {
     "libavoid-js": "^0.5.0-beta.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.9",
     "cytoscape": "^3.34.3",
+    "dprint": "^0.64.3",
     "esbuild": "^0.28.2",
+    "oxc-parser": "^0.156.0",
     "playwright-core": "^1.64.1",
-    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pkabalski/cytoscape-libavoid.git"
-  },
-  "homepage": "https://github.com/pkabalski/cytoscape-libavoid#readme",
-  "bugs": {
-    "url": "https://github.com/pkabalski/cytoscape-libavoid/issues"
   },
   "engines": {
     "node": ">=22.18"

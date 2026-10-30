@@ -1,11 +1,14 @@
-// The options of EdgeRouter, shared by the plugin and the worker. They are
-// plain data, so they can be posted to a worker.
+/**
+ * The options of EdgeRouter, shared by the plugin and the worker. They are
+ * plain data, so they can be posted to a worker.
+ */
 
-import { checkNonNegative, pluginError } from '../shared/errors';
 import { ROUTING_OPTION_NAMES, ROUTING_PARAMETER_NAMES } from '../libavoid/api';
 import type { RoutingOptionName, RoutingParameterName } from '../libavoid/api';
+import { checkNonNegative, pluginError } from '../shared/errors';
 
-export interface RoutingOptions {
+export interface RoutingOptions
+{
   /** Gap between neighbouring parallel edges (px). @default 2 */
   edgeSpacing: number;
   /** Distance edges keep from the nodes they pass (px). @default 12 */
@@ -39,7 +42,7 @@ export interface RoutingOptions {
 }
 
 /** The defaults of RoutingOptions, frozen. */
-export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
+export const DEFAULT_ROUTING_OPTIONS: Readonly<RoutingOptions> = Object.freeze({
   edgeSpacing: 2,
   shapeBufferDistance: 12,
   idealNudgingDistance: 'auto',
@@ -51,9 +54,13 @@ export const defaultRoutingOptions: Readonly<RoutingOptions> = Object.freeze({
 });
 
 /** Only the routing options of a larger options object, e.g. to send them to a worker. */
-export function pickRoutingOptions(options: RoutingOptions): RoutingOptions {
+export function pickRoutingOptions(options: RoutingOptions): RoutingOptions
+{
   const picked: Partial<Record<keyof RoutingOptions, unknown>> = {};
-  for (const key of Object.keys(defaultRoutingOptions) as Array<keyof RoutingOptions>) picked[key] = options[key];
+  for (const key of Object.keys(DEFAULT_ROUTING_OPTIONS) as Array<keyof RoutingOptions>)
+  {
+    picked[key] = options[key];
+  }
   return picked as RoutingOptions;
 }
 
@@ -64,7 +71,8 @@ export function pickRoutingOptions(options: RoutingOptions): RoutingOptions {
 export function resolveRoutingOptions<T extends RoutingOptions>(
   defaults: Readonly<T>,
   options: Partial<T>,
-): Readonly<T> {
+): Readonly<T>
+{
   // the defaults set both nested objects, so the merged ones are never undefined
   const merged: T = { ...defaults, ...options };
   merged.routingParameters = Object.freeze({ ...merged.routingParameters }) as T['routingParameters'];
@@ -77,19 +85,33 @@ export function resolveRoutingOptions<T extends RoutingOptions>(
  * Throws for invalid values, and for names libavoid does not know: without the
  * check those would only fail once libavoid is loaded and a run starts.
  */
-function checkRoutingOptions(options: RoutingOptions): void {
+function checkRoutingOptions(options: RoutingOptions): void
+{
   checkNonNegative('edgeSpacing', options.edgeSpacing);
   checkNonNegative('shapeBufferDistance', options.shapeBufferDistance);
-  if (options.idealNudgingDistance !== 'auto') checkNonNegative('idealNudgingDistance', options.idealNudgingDistance);
-  for (const [name, value] of Object.entries(options.routingParameters)) {
-    if (!isOneOf(name, ROUTING_PARAMETER_NAMES)) throw pluginError(`unknown routing parameter "${name}"`);
-    if (value !== undefined && !Number.isFinite(value)) {
+  if (options.idealNudgingDistance !== 'auto')
+  {
+    checkNonNegative('idealNudgingDistance', options.idealNudgingDistance);
+  }
+  for (const [name, value] of Object.entries(options.routingParameters))
+  {
+    if (!isOneOf(name, ROUTING_PARAMETER_NAMES))
+    {
+      throw pluginError(`unknown routing parameter "${name}"`);
+    }
+    if (value !== undefined && !Number.isFinite(value))
+    {
       throw pluginError(`routing parameter "${name}" must be a number`);
     }
   }
-  for (const [name, value] of Object.entries(options.routingOptions)) {
-    if (!isOneOf(name, ROUTING_OPTION_NAMES)) throw pluginError(`unknown routing option "${name}"`);
-    if (value !== undefined && typeof value !== 'boolean') {
+  for (const [name, value] of Object.entries(options.routingOptions))
+  {
+    if (!isOneOf(name, ROUTING_OPTION_NAMES))
+    {
+      throw pluginError(`unknown routing option "${name}"`);
+    }
+    if (value !== undefined && typeof value !== 'boolean')
+    {
       throw pluginError(`routing option "${name}" must be a boolean`);
     }
   }

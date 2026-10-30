@@ -51,7 +51,7 @@ routing.destroy(); // restore the edges' own styles
 ```
 
 `cy.libavoid()` without options returns the current instance. All options are
-documented on the `LibavoidOptions` type in `cytoscape-adapter/options.ts`; the defaults are in `defaults`.
+documented on the `LibavoidOptions` type in `cytoscape-adapter/options.ts`; the defaults are in `DEFAULTS`.
 
 ## 4. Optional: route in a Web Worker
 

@@ -7,6 +7,11 @@
     // load.ts: makes the libavoid-js stub typings available in projects that copy src/
     "typescript/triple-slash-reference": "off",
     // public is the default, so it is left out
-    "typescript/explicit-member-accessibility": ["error", { "accessibility": "no-public" }]
+    "typescript/explicit-member-accessibility": ["error", { "accessibility": "no-public" }],
+    // braces around every if / else / for / while body, also one-liners
+    "eslint/curly": ["error", "all"],
+    // no empty blocks or catches: errors are handled or reported, never swallowed
+    "eslint/no-empty": "error",
+    "eslint/no-empty-function": "error"
   }
 }

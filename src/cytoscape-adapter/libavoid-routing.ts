@@ -1,14 +1,16 @@
-// Keeps the routes of a Cytoscape graph up to date. Routing is done by a
-// RoutingBackend (in this thread or in a Web Worker), styling by EdgeStyler,
-// timing by RouteScheduler.
+/**
+ * Keeps the routes of a Cytoscape graph up to date. Routing is done by a
+ * RoutingBackend (in this thread or in a Web Worker), styling by EdgeStyler,
+ * timing by RouteScheduler.
+ */
 
 import type { Core, EdgeSingular, EventHandler, NodeSingular } from 'cytoscape';
+import { loadLibavoid } from '../libavoid/load';
+import { LocalRouter } from '../routing/local-router';
+import type { RoutingBackend } from '../routing/routing-backend';
 import { pluginMessage } from '../shared/errors';
 import type { Point } from '../shared/geometry';
 import type { GraphModel } from '../shared/graph';
-import { loadLibavoid } from '../libavoid/load';
-import type { RoutingBackend } from '../routing/routing-backend';
-import { LocalRouter } from '../routing/local-router';
 import { WorkerRouter } from '../worker/worker-router';
 import { DragTracker } from './drag-tracker';
 import { EdgeStyler } from './edge-styler';
@@ -24,7 +26,8 @@ const ROUTED_EVENT = 'avoidrouted';
 const ERROR_EVENT = 'avoiderror';
 
 /** Routes the edges of one Cytoscape instance; created by `cy.libavoid(options)`. */
-export class LibavoidRouting {
+export class LibavoidRouting
+{
   readonly cy: Core;
   /** Resolves once libavoid is loaded and the first routing run is done. */
   readonly ready: Promise<LibavoidRouting>;
@@ -54,13 +57,14 @@ export class LibavoidRouting {
   /** The Cytoscape listeners added by startListening(), to remove them again. */
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
-  constructor(cy: Core, options: Partial<LibavoidOptions> = {}) {
+  constructor(cy: Core, options: Partial<LibavoidOptions> = {})
+  {
     this.cy = cy;
     this.currentOptions = resolveOptions(options);
     const { worker, wasmUrl, avoidLib } = this.currentOptions;
-    this.backend = worker
-      ? new WorkerRouter(worker, absoluteUrl(wasmUrl))
-      : new LocalRouter(avoidLib ?? loadLibavoid(wasmUrl));
+    this.backend = worker ?
+      new WorkerRouter(worker, absoluteUrl(wasmUrl)) :
+      new LocalRouter(avoidLib ?? loadLibavoid(wasmUrl));
     this.styler = new EdgeStyler(cy);
     this.scheduler = new RouteScheduler(
       {
@@ -75,29 +79,40 @@ export class LibavoidRouting {
   }
 
   /** The options in use (frozen); change them with setOptions(). */
-  get options(): Readonly<LibavoidOptions> {
+  get options(): Readonly<LibavoidOptions>
+  {
     return this.currentOptions;
   }
 
   /** Edge id -> route points of the last run. */
-  get routes(): ReadonlyMap<string, Point[]> {
+  get routes(): ReadonlyMap<string, Point[]>
+  {
     return this.currentRoutes;
   }
 
   /** Route points of an edge (element or id), or undefined if it is not routed. */
-  getRoute(edge: EdgeSingular | string): Point[] | undefined {
+  getRoute(edge: EdgeSingular | string): Point[] | undefined
+  {
     return this.currentRoutes.get(typeof edge === 'string' ? edge : edge.id());
   }
 
   /** The plain graph model routing gets now, e.g. to see why an edge is not routed. */
-  model(): GraphModel {
+  model(): GraphModel
+  {
     return readModel(this.cy, this.currentOptions);
   }
 
   /** Routes all edges now, after the run in flight; rejects if routing fails. */
-  async refresh(): Promise<ReadonlyMap<string, Point[]>> {
-    while (this.inFlight) await this.inFlight;
-    if (this.state !== 'destroyed') await this.run(this.snapshot());
+  async refresh(): Promise<ReadonlyMap<string, Point[]>>
+  {
+    while (this.inFlight)
+    {
+      await this.inFlight;
+    }
+    if (this.state !== 'destroyed')
+    {
+      await this.run(this.snapshot());
+    }
     return this.currentRoutes;
   }
 
@@ -109,59 +124,109 @@ export class LibavoidRouting {
    * is dragged, re-routes wait for `dragRouteDelay` and are spaced out by
    * `dragRouteInterval`.
    */
-  scheduleRoute(): void {
-    if (this.state === 'running') this.scheduler.schedule();
+  scheduleRoute(): void
+  {
+    if (this.state === 'running')
+    {
+      this.scheduler.schedule();
+    }
   }
 
   /**
    * Changes options and re-routes. Invalid options throw; routing errors arrive as
    * `avoiderror` events. `worker`, `wasmUrl` and `avoidLib` only count on creation.
    */
-  setOptions(options: Partial<LibavoidOptions>): this {
+  setOptions(options: Partial<LibavoidOptions>): this
+  {
     const wasLive = this.currentOptions.live;
     this.currentOptions = resolveOptions({ ...this.currentOptions, ...options });
-    if (this.state !== 'running') return this; // the first run picks the options up
-    if (this.currentOptions.live && !wasLive) this.startListening();
-    if (!this.currentOptions.live && wasLive) this.stopListening();
+    if (this.state !== 'running')
+    {
+      return this; // the first run picks the options up
+    }
+    if (this.currentOptions.live && !wasLive)
+    {
+      this.startListening();
+    }
+    if (!this.currentOptions.live && wasLive)
+    {
+      this.stopListening();
+    }
     this.last.modelKey = ''; // the options are not part of the model, so force the next run
-    if (this.inFlight) this.rerun = true;
-    else this.run(this.snapshot()).catch(this.reportError);
+    if (this.inFlight)
+    {
+      this.rerun = true;
+    }
+    else
+    {
+      this.run(this.snapshot()).catch(this.reportError);
+    }
     return this;
   }
 
   /** Stops routing and restores the edges' own styles. A `worker` is left running. */
-  destroy(): void {
+  destroy(): void
+  {
     this.stop(true);
   }
 
   /** Routes once (loading libavoid unless a worker does the routing), then listens for changes. */
-  private async start(): Promise<void> {
+  private async start(): Promise<void>
+  {
     await Promise.resolve(); // never route inside the constructor
-    try {
-      if (this.state !== 'destroyed') await this.run(this.snapshot());
-    } catch (error) {
-      if (this.state !== 'destroyed') throw error; // destroy() rejects the run in flight
+    try
+    {
+      if (this.state !== 'destroyed')
+      {
+        await this.run(this.snapshot());
+      }
     }
-    if (this.state === 'destroyed') return;
+    catch (error)
+    {
+      if (this.state !== 'destroyed')
+      {
+        throw error; // destroy() rejects the run in flight
+      }
+    }
+    if (this.state === 'destroyed')
+    {
+      return;
+    }
     this.state = 'running';
-    if (!this.currentOptions.live) return;
+    if (!this.currentOptions.live)
+    {
+      return;
+    }
     this.startListening();
     // changes made while the first run was in flight, e.g. with a worker, were not heard
-    if (this.snapshot().key !== this.last.modelKey) this.scheduleRoute();
+    if (this.snapshot().key !== this.last.modelKey)
+    {
+      this.scheduleRoute();
+    }
   }
 
   /** @param restoreStyles false when the graph itself is destroyed: its renderer is already gone */
-  private stop(restoreStyles: boolean): void {
-    if (this.state === 'destroyed') return;
+  private stop(restoreStyles: boolean): void
+  {
+    if (this.state === 'destroyed')
+    {
+      return;
+    }
     this.state = 'destroyed';
     this.scheduler.stop();
     this.cy.removeListener('destroy', this.onGraphDestroyed);
     this.stopListening();
     this.backend.dispose();
     this.currentRoutes.clear();
-    if (!restoreStyles) return;
+    if (!restoreStyles)
+    {
+      return;
+    }
     this.styler.clear();
-    if (this.cy.scratch(SCRATCH_KEY) === this) this.cy.removeScratch(SCRATCH_KEY);
+    if (this.cy.scratch(SCRATCH_KEY) === this)
+    {
+      this.cy.removeScratch(SCRATCH_KEY);
+    }
   }
 
   /** `cy.destroy()` also ends the routing, so no pending re-route touches the destroyed graph. */
@@ -171,15 +236,21 @@ export class LibavoidRouting {
    * The run the scheduler asks for. Waits while dragging without `rerouteOnDrag`,
    * for the run in flight, and is skipped if the input did not change.
    */
-  private runScheduledRoute(): void {
+  private runScheduledRoute(): void
+  {
     // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
-    if (!this.currentOptions.rerouteOnDrag && this.drag.active) return;
-    if (this.inFlight) {
+    if (!this.currentOptions.rerouteOnDrag && this.drag.active)
+    {
+      return;
+    }
+    if (this.inFlight)
+    {
       this.rerun = true; // the snapshot is taken once the run in flight is done
       return;
     }
     const snapshot = this.snapshot();
-    if (snapshot.key === this.last.modelKey && (snapshot.draft || !this.last.draft)) {
+    if (snapshot.key === this.last.modelKey && (snapshot.draft || !this.last.draft))
+    {
       this.styler.reveal(snapshot.nodePositions); // e.g. a node dragged back to where it was routed
       return;
     }
@@ -187,32 +258,43 @@ export class LibavoidRouting {
   }
 
   /** The routing input now; while dragging a draft, see routingOptionsFor(). */
-  private snapshot(): Snapshot {
+  private snapshot(): Snapshot
+  {
     return takeSnapshot(this.cy, this.currentOptions, this.drag.active);
   }
 
   /** Routes a snapshot and applies the routes; rejects if routing fails. Changes in the meantime are routed afterwards. */
-  private run(snapshot: Snapshot): Promise<void> {
+  private run(snapshot: Snapshot): Promise<void>
+  {
     // also on failure: the same input is not retried on every following event
     this.last.modelKey = snapshot.key;
     this.last.draft = snapshot.draft;
     const start = performance.now();
-    const run = this.backend.route(snapshot.model, this.routingOptionsFor(snapshot)).then(({ routes, routingMs }) => {
-      if (this.state !== 'destroyed') this.applyRoutes(routes, snapshot, routingMs, start);
+    const run = this.backend.route(snapshot.model, this.routingOptionsFor(snapshot)).then(({ routes, routingMs }) =>
+    {
+      if (this.state !== 'destroyed')
+      {
+        this.applyRoutes(routes, snapshot, routingMs, start);
+      }
     });
-    this.inFlight = run
-      .catch(() => {}) // reported by the caller of run()
-      .then(() => {
-        this.inFlight = undefined;
-        if (!this.rerun) return;
-        this.rerun = false;
-        this.scheduleRoute();
-      });
+    const settle = (): void =>
+    {
+      this.inFlight = undefined;
+      if (!this.rerun)
+      {
+        return;
+      }
+      this.rerun = false;
+      this.scheduleRoute();
+    };
+    // settles either way; a failure is reported by the caller of run(), which gets `run`
+    this.inFlight = run.then(settle, settle);
     return run;
   }
 
   /** Styles the edges, keeps the routes and the timing of the run, and emits `avoidrouted`. */
-  private applyRoutes(routes: Map<string, Point[]>, snapshot: Snapshot, routingMs: number, start: number): void {
+  private applyRoutes(routes: Map<string, Point[]>, snapshot: Snapshot, routingMs: number, start: number): void
+  {
     const { cornerRadius, labelPosition } = this.currentOptions;
     const stylingStart = performance.now();
     this.styler.apply(routes, { cornerRadius, labelPosition }, snapshot.nodePositions);
@@ -226,30 +308,43 @@ export class LibavoidRouting {
   }
 
   /** While dragging, routes are drafts: without the slower detours around crowded gaps. */
-  private routingOptionsFor(snapshot: Snapshot): LibavoidOptions {
-    return snapshot.draft && this.currentOptions.detourCrowded
-      ? { ...this.currentOptions, detourCrowded: false }
-      : this.currentOptions;
+  private routingOptionsFor(snapshot: Snapshot): LibavoidOptions
+  {
+    return snapshot.draft && this.currentOptions.detourCrowded ?
+      { ...this.currentOptions, detourCrowded: false } :
+      this.currentOptions;
   }
 
   /** For runs nobody awaits: an `avoiderror` event and the console. */
-  private readonly reportError = (error: unknown): void => {
-    if (this.state === 'destroyed') return;
+  private readonly reportError = (error: unknown): void =>
+  {
+    if (this.state === 'destroyed')
+    {
+      return;
+    }
     this.cy.emit(ERROR_EVENT, [error]);
     console.error(pluginMessage('re-route failed'), error);
   };
 
   /** How long to wait before the next re-route while dragging, see `dragRouteInterval`. */
-  private dragPause(): number {
+  private dragPause(): number
+  {
     const { dragRouteInterval } = this.currentOptions;
-    if (dragRouteInterval === 'auto' && !this.backend.blocksThread) return 0; // e.g. a worker
+    if (dragRouteInterval === 'auto' && !this.backend.blocksThread)
+    {
+      return 0; // e.g. a worker
+    }
     const interval = dragRouteInterval === 'auto' ? this.last.duration : dragRouteInterval;
     return this.last.end + interval - performance.now();
   }
 
   /** Listens to every change that can move a route, and to grab / release for the drag options. */
-  private startListening(): void {
-    if (this.listeners.length) return;
+  private startListening(): void
+  {
+    if (this.listeners.length)
+    {
+      return;
+    }
     this.drag.reset(this.cy);
     this.listen('grab', 'node', this.drag.onGrab);
     this.listen('free remove', 'node', this.drag.onRelease);
@@ -258,7 +353,8 @@ export class LibavoidRouting {
     this.listen('class style', 'node', reroute); // node size may depend on classes / styles
     this.listen('class', 'edge', reroute); // edge width may depend on classes
     // rerouteOnDrag is checked in runScheduledRoute()
-    this.listen('position', 'node', (event) => {
+    this.listen('position', 'node', (event) =>
+    {
       this.hideDraggedEdges(event.target as NodeSingular);
       reroute();
     });
@@ -269,24 +365,37 @@ export class LibavoidRouting {
    * With `hideEdgesOnDrag`: hides the edges of a dragged node until they are routed
    * again, and those of its children and of the compound nodes around it, which move along.
    */
-  private hideDraggedEdges(node: NodeSingular): void {
-    if (!this.currentOptions.hideEdgesOnDrag || !this.drag.active) return;
+  private hideDraggedEdges(node: NodeSingular): void
+  {
+    if (!this.currentOptions.hideEdgesOnDrag || !this.drag.active)
+    {
+      return;
+    }
     this.styler.hide(node.union(node.descendants()).union(node.ancestors()).connectedEdges());
   }
 
-  private stopListening(): void {
-    for (const [events, selector, handler] of this.listeners) this.cy.off(events, selector, handler);
+  private stopListening(): void
+  {
+    for (const [events, selector, handler] of this.listeners)
+    {
+      this.cy.off(events, selector, handler);
+    }
     this.listeners = [];
   }
 
-  private listen(events: string, selector: string, handler: EventHandler): void {
+  private listen(events: string, selector: string, handler: EventHandler): void
+  {
     this.cy.on(events, selector, handler);
     this.listeners.push([events, selector, handler]);
   }
 }
 
 /** A worker resolves relative URLs against its own script, so they are made absolute first. */
-function absoluteUrl(url: string | undefined): string | undefined {
-  if (url === undefined || typeof document === 'undefined') return url;
+function absoluteUrl(url: string | undefined): string | undefined
+{
+  if (url === undefined || typeof document === 'undefined')
+  {
+    return url;
+  }
   return new URL(url, document.baseURI).href;
 }

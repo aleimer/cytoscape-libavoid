@@ -13,13 +13,15 @@ const BORDER_TOLERANCE = 0.5;
 export const MIN_SHARED_LENGTH = 1;
 
 /** A route end: the node it is attached to and the index of the end point in the route. */
-export interface SegmentEnd {
+export interface SegmentEnd
+{
   node: GraphNode;
   point: number;
 }
 
 /** An orthogonal segment of a route, between route[index] and route[index + 1]. */
-export class Segment {
+export class Segment
+{
   readonly edgeId: string;
   /** The whole route; moving the segment changes it in place. */
   readonly route: Point[];
@@ -34,7 +36,8 @@ export class Segment {
   /** False if an end of the segment cannot slide, e.g. its node is missing or the side is too short. */
   movable = true;
 
-  constructor(edgeId: string, route: Point[], index: number, axis: Axis, width: number) {
+  constructor(edgeId: string, route: Point[], index: number, axis: Axis, width: number)
+  {
     this.edgeId = edgeId;
     this.route = route;
     this.index = index;
@@ -43,28 +46,44 @@ export class Segment {
   }
 
   /** All routes split into their orthogonal segments (others are skipped); the routes are used as they are, not copied. */
-  static allOf(routes: ReadonlyMap<string, Point[]>, model: GraphModel): Segment[] {
+  static allOf(routes: ReadonlyMap<string, Point[]>, model: GraphModel): Segment[]
+  {
     const nodes = nodesById(model);
     const edges = new Map(model.edges.map((edge) => [edge.id, edge]));
     const segments: Segment[] = [];
-    for (const [edgeId, route] of routes) {
+    for (const [edgeId, route] of routes)
+    {
       const edge = edges.get(edgeId);
       const last = route.length - 1;
-      for (let index = 0; index < last; index++) {
+      for (let index = 0; index < last; index++)
+      {
         const a = route[index]!;
         const b = route[index + 1]!;
         const axis = a.x === b.x ? 'x' : a.y === b.y ? 'y' : undefined;
-        if (!axis) continue; // not orthogonal
+        if (!axis)
+        {
+          continue; // not orthogonal
+        }
         const segment = new Segment(edgeId, route, index, axis, edge?.width || 0);
         const ends = [
           { isEnd: index === 0, nodeId: edge?.source, point: 0 },
           { isEnd: index + 1 === last, nodeId: edge?.target, point: last },
         ];
-        for (const { isEnd, nodeId, point } of ends) {
-          if (!isEnd) continue;
+        for (const { isEnd, nodeId, point } of ends)
+        {
+          if (!isEnd)
+          {
+            continue;
+          }
           const node = nodeId === undefined ? undefined : nodes.get(nodeId);
-          if (node) segment.ends.push({ node, point });
-          else segment.movable = false; // unknown edge or node: leave the segment where it is
+          if (node)
+          {
+            segment.ends.push({ node, point });
+          }
+          else
+          {
+            segment.movable = false; // unknown edge or node: leave the segment where it is
+          }
         }
         segment.movable &&= segment.ends.every((end) => segment.sideInterval(end) !== undefined);
         segments.push(segment);
@@ -74,12 +93,14 @@ export class Segment {
   }
 
   /** Where the segment lies on its axis: the x of a vertical segment. */
-  get position(): number {
+  get position(): number
+  {
     return this.route[this.index]![this.axis];
   }
 
   /** From where to where the segment reaches along its length, on the other axis: the y range of a vertical segment. */
-  get span(): [number, number] {
+  get span(): [number, number]
+  {
     const along = otherAxis(this.axis);
     const a = this.route[this.index]![along];
     const b = this.route[this.index + 1]![along];
@@ -87,15 +108,23 @@ export class Segment {
   }
 
   /** How long the segment is (px). */
-  get length(): number {
+  get length(): number
+  {
     const [from, to] = this.span;
     return to - from;
   }
 
   /** Length along which this segment and a parallel one of another edge lie so close that their strokes touch. */
-  overlapLength(other: Segment): number {
-    if (this.axis !== other.axis || this.edgeId === other.edgeId) return 0;
-    if (Math.abs(this.position - other.position) >= (this.width + other.width) / 2) return 0;
+  overlapLength(other: Segment): number
+  {
+    if (this.axis !== other.axis || this.edgeId === other.edgeId)
+    {
+      return 0;
+    }
+    if (Math.abs(this.position - other.position) >= (this.width + other.width) / 2)
+    {
+      return 0;
+    }
     const [a1, a2] = this.span;
     const [b1, b2] = other.span;
     const shared = Math.min(a2, b2) - Math.max(a1, b1);
@@ -103,8 +132,12 @@ export class Segment {
   }
 
   /** True if this segment and a perpendicular one of another edge cross in an X (not touching at an end). */
-  crosses(other: Segment): boolean {
-    if (this.axis === other.axis || this.edgeId === other.edgeId) return false;
+  crosses(other: Segment): boolean
+  {
+    if (this.axis === other.axis || this.edgeId === other.edgeId)
+    {
+      return false;
+    }
     const [aFrom, aTo] = this.span;
     const [bFrom, bTo] = other.span;
     return aFrom < other.position && other.position < aTo && bFrom < this.position && this.position < bTo;
@@ -115,13 +148,17 @@ export class Segment {
    * is on, with the whole stroke inside the side. Undefined if the end point is
    * not on a side across the segment or the side is too short for the stroke.
    */
-  sideInterval({ node, point }: SegmentEnd): [number, number] | undefined {
+  sideInterval({ node, point }: SegmentEnd): [number, number] | undefined
+  {
     const { axis } = this;
     const along = otherAxis(axis);
     const end = this.route[point]!;
     const onSideLine = Math.abs(Math.abs(end[along] - node[along]) - halfSize(node, along)) <= BORDER_TOLERANCE;
     const withinSide = Math.abs(end[axis] - node[axis]) <= halfSize(node, axis) + BORDER_TOLERANCE;
-    if (!onSideLine || !withinSide) return undefined;
+    if (!onSideLine || !withinSide)
+    {
+      return undefined;
+    }
     const [low, high] = extentOf(node, axis, -(this.width / 2 + NODE_MARGIN));
     return low <= high ? [low, high] : undefined;
   }

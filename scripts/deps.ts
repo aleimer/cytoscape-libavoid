@@ -13,11 +13,15 @@ import { dirname, join } from 'node:path';
 const OUT = 'docs/dependencies.md';
 
 /** Runs depcruise on src/ and returns its output; throws if it exits with an error. */
-function depcruise(...args: string[]): string {
+function depcruise(...args: string[]): string
+{
   const npx = ['--yes', '-p', 'node@24', '-p', 'typescript@5', '-p', 'dependency-cruiser@18.6.0', '--'];
   // npx-cli.js next to the npm that runs this script: no shell (npx is npx.cmd on Windows, which would eat the ^)
   const npmCli = process.env['npm_execpath'];
-  if (!npmCli) throw new Error('run this with `npm run deps` or `npm run deps:check`');
+  if (!npmCli)
+  {
+    throw new Error('run this with `npm run deps` or `npm run deps:check`');
+  }
   const npxCli = join(dirname(npmCli), 'npx-cli.js');
   return execFileSync(process.execPath, [npxCli, ...npx, 'depcruise', 'src', ...args], {
     encoding: 'utf8',
@@ -25,15 +29,21 @@ function depcruise(...args: string[]): string {
   }).trim();
 }
 
-if (process.argv.includes('--check')) {
-  try {
+if (process.argv.includes('--check'))
+{
+  try
+  {
     console.log(depcruise('--config', '.dependency-cruiser.cjs', '--output-type', 'err'));
-  } catch (error) {
+  }
+  catch (error)
+  {
     // the violations are on stdout
-    console.error((error as { stdout?: string }).stdout ?? error);
+    console.error((error as { stdout?: string; }).stdout ?? error);
     process.exit(1);
   }
-} else {
+}
+else
+{
   const mermaid = (...args: string[]) =>
     depcruise(
       '--no-config',

@@ -1,21 +1,24 @@
-import { test, before } from 'node:test';
-import assert from 'node:assert/strict';
 import cytoscape from 'cytoscape';
+import assert from 'node:assert/strict';
+import { before, test } from 'node:test';
 import register, { loadLibavoid } from '../src';
 import type { Avoid, RoutingOptions } from '../src';
 import { countRoutes, createCy, obstacleElements, setGrabbed, wait } from './helpers';
 
 let avoid: Avoid;
-before(async () => {
+before(async () =>
+{
   avoid = await loadLibavoid();
   register(cytoscape);
 });
 
-test('cy.libavoid() styles edges, re-routes on move and restores on destroy', async () => {
+test('cy.libavoid() styles edges, re-routes on move and restores on destroy', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid });
-  try {
+  try
+  {
     await routing.ready;
     assert.equal(cy.libavoid(), routing, 'no-arg call returns the instance');
 
@@ -31,14 +34,18 @@ test('cy.libavoid() styles edges, re-routes on move and restores on destroy', as
     routing.destroy();
     assert.equal(edge.style('curve-style'), 'taxi', 'original stylesheet restored');
     assert.equal(cy.scratch('_libavoid'), undefined);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('cy.libavoid(options) replaces the previous instance', async () => {
+test('cy.libavoid(options) replaces the previous instance', async () =>
+{
   const cy = createCy(obstacleElements());
-  try {
+  try
+  {
     const first = cy.libavoid({ avoidLib: avoid });
     await first.ready;
     const second = cy.libavoid({ avoidLib: avoid, cornerRadius: 5 });
@@ -46,12 +53,15 @@ test('cy.libavoid(options) replaces the previous instance', async () => {
     assert.notEqual(first, second);
     assert.equal(cy.libavoid(), second);
     assert.equal(cy.$id('ab').style('curve-style'), 'round-segments');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('live routing settles with compound nodes and ignores changes that move nothing', async () => {
+test('live routing settles with compound nodes and ignores changes that move nothing', async () =>
+{
   // with compounds, setting edge styles fires 'style' on all nodes, which used to re-route forever
   const cy = createCy([
     { data: { id: 'g1' } },
@@ -63,7 +73,8 @@ test('live routing settles with compound nodes and ignores changes that move not
   ]);
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid });
-  try {
+  try
+  {
     await routing.ready;
     await wait(60);
     assert.equal(routes.count, 1, 'no re-routes after the initial one');
@@ -91,12 +102,15 @@ test('live routing settles with compound nodes and ignores changes that move not
     a.emit('free');
     await wait(30);
     assert.equal(routes.count, 1, 're-routes on release');
-  } finally {
+  }
+  finally
+  {
     cy.destroy(); // also stops a runaway re-route loop, so a regression fails instead of hanging
   }
 });
 
-test('edges to compound nodes are routed from their border, edges into their own children are not', async () => {
+test('edges to compound nodes are routed from their border, edges into their own children are not', async () =>
+{
   const cy = createCy([
     { data: { id: 'g' } },
     { data: { id: 'x', parent: 'g' }, position: { x: 0, y: 0 } },
@@ -105,7 +119,8 @@ test('edges to compound nodes are routed from their border, edges into their own
     { data: { id: 'xg', source: 'x', target: 'g' } },
   ]);
   const routing = cy.libavoid({ avoidLib: avoid });
-  try {
+  try
+  {
     await routing.ready;
     const route = routing.getRoute('gb');
     assert.ok(route && route.length >= 4, 'routed around c');
@@ -113,16 +128,20 @@ test('edges to compound nodes are routed from their border, edges into their own
     assert.equal(cy.$id('gb').style('curve-style'), 'segments');
     assert.equal(routing.getRoute('xg'), undefined, 'child to its own parent is left alone');
     assert.equal(cy.$id('xg').style('curve-style'), 'taxi');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('edgeSides restricts the sides, and a change is picked up', async () => {
+test('edgeSides restricts the sides, and a change is picked up', async () =>
+{
   const cy = createCy(obstacleElements());
   let side: 'top' | 'bottom' = 'top';
   const routing = cy.libavoid({ avoidLib: avoid, edgeSides: () => ({ source: side, target: [side] }) });
-  try {
+  try
+  {
     await routing.ready;
     const { y1, y2 } = cy.$id('a').boundingBox({ includeLabels: false });
     assert.equal(routing.getRoute('ab')?.[0]?.y, y1, 'leaves a at the top');
@@ -132,21 +151,26 @@ test('edgeSides restricts the sides, and a change is picked up', async () => {
     const route = routing.getRoute('ab')!;
     assert.equal(route[0]!.y, y2, 'now at the bottom');
     assert.equal(route[route.length - 1]!.y, y2);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('dragRouteInterval spaces out re-routes while dragging and routes the final position on release', async () => {
+test('dragRouteInterval spaces out re-routes while dragging and routes the final position on release', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid, dragRouteInterval: 300 });
-  try {
+  try
+  {
     await routing.ready;
     routes.reset();
     const c = cy.$id('c');
     setGrabbed(c, true);
-    for (let y = 10; y <= 100; y += 10) {
+    for (let y = 10; y <= 100; y += 10)
+    {
       c.position({ x: 150, y });
       await wait(10);
     }
@@ -158,21 +182,26 @@ test('dragRouteInterval spaces out re-routes while dragging and routes the final
     await wait(400);
     assert.equal(routes.count, 1, 'one re-route after the interval');
     assert.equal(routing.getRoute('ab')?.length, 2, 'routed with the final position');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('dragRouteDelay routes only once the dragged node rests', async () => {
+test('dragRouteDelay routes only once the dragged node rests', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid, dragRouteDelay: 100 });
-  try {
+  try
+  {
     await routing.ready;
     routes.reset();
     const c = cy.$id('c');
     setGrabbed(c, true);
-    for (let y = 10; y <= 300; y += 10) {
+    for (let y = 10; y <= 300; y += 10)
+    {
       c.position({ x: 150, y });
       await wait(10);
     }
@@ -187,12 +216,15 @@ test('dragRouteDelay routes only once the dragged node rests', async () => {
     await wait(30);
     assert.equal(routes.count, 2, 'the release routes at once');
     assert.ok((routing.getRoute('ab')?.length ?? 0) >= 4);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('hideEdgesOnDrag hides the edges of a dragged node until they are routed again', async () => {
+test('hideEdgesOnDrag hides the edges of a dragged node until they are routed again', async () =>
+{
   const cy = createCy([
     ...obstacleElements(),
     { data: { id: 'd' }, position: { x: 0, y: 200 } },
@@ -200,7 +232,8 @@ test('hideEdgesOnDrag hides the edges of a dragged node until they are routed ag
   ]);
   const routing = cy.libavoid({ avoidLib: avoid, hideEdgesOnDrag: true, dragRouteDelay: 100 });
   const opacity = (id: string) => Number(cy.$id(id).style('line-opacity'));
-  try {
+  try
+  {
     await routing.ready;
     const a = cy.$id('a');
     setGrabbed(a, true);
@@ -230,15 +263,19 @@ test('hideEdgesOnDrag hides the edges of a dragged node until they are routed ag
     a.emit('free');
     await wait(30);
     assert.equal(opacity('ab'), 1, 'shown although the release did not re-route');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test("hideEdgesOnDrag restores the app's own bypasses", async () => {
+test("hideEdgesOnDrag restores the app's own bypasses", async () =>
+{
   const cy = createCy(obstacleElements());
   const routing = cy.libavoid({ avoidLib: avoid, hideEdgesOnDrag: true, rerouteOnDrag: false });
-  try {
+  try
+  {
     await routing.ready;
     const ab = cy.$id('ab');
     ab.style('line-opacity', 0.5);
@@ -258,29 +295,35 @@ test("hideEdgesOnDrag restores the app's own bypasses", async () => {
     a.emit('free');
     await wait(30);
     assert.equal(Number(ab.style('line-opacity')), 1);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('a failing re-route emits avoiderror and the plugin keeps running', async () => {
+test('a failing re-route emits avoiderror and the plugin keeps running', async () =>
+{
   const cy = createCy(obstacleElements());
   let broken = false;
   // libavoid that fails while `broken` is set
   const flaky = new Proxy(avoid, {
     get: (target, key, receiver) =>
-      key === 'Router' && broken
-        ? function () {
-            throw new Error('libavoid broke');
-          }
-        : Reflect.get(target, key, receiver),
+      key === 'Router' && broken ?
+        function()
+        {
+          throw new Error('libavoid broke');
+        } :
+        Reflect.get(target, key, receiver),
   });
   const routing = cy.libavoid({ avoidLib: flaky });
   const errors: unknown[] = [];
   cy.on('avoiderror', (_evt, error) => errors.push(error));
   const consoleError = console.error;
-  console.error = () => {}; // the plugin also logs the error
-  try {
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => logged.push(args); // the plugin also logs the error
+  try
+  {
     await routing.ready;
     broken = true;
     cy.$id('c').position({ x: 150, y: 20 });
@@ -289,48 +332,61 @@ test('a failing re-route emits avoiderror and the plugin keeps running', async (
     await wait(30);
     assert.equal(errors.length, 1);
     assert.match(String(errors[0]), /libavoid broke/);
+    assert.equal(logged.length, 1, 'logged once');
 
     broken = false;
     cy.$id('c').position({ x: 150, y: 300 });
     await wait(30);
     assert.equal(routing.getRoute('ab')?.length, 2, 'routes again once the input is valid');
-  } finally {
+  }
+  finally
+  {
     console.error = consoleError;
     cy.destroy();
   }
 });
 
-test('setOptions reports invalid options to the caller', async () => {
+test('setOptions reports invalid options to the caller', async () =>
+{
   const cy = createCy(obstacleElements());
   const routing = cy.libavoid({ avoidLib: avoid });
-  try {
+  try
+  {
     await routing.ready;
     const bad = { routingOptions: { bogus: true } } as unknown as Partial<RoutingOptions>;
     assert.throws(() => routing.setOptions(bad), /unknown routing option "bogus"/);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('destroy() before libavoid is ready leaves the edges untouched', async () => {
+test('destroy() before libavoid is ready leaves the edges untouched', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid });
   routing.destroy();
-  try {
+  try
+  {
     await routing.ready;
     assert.equal(routes.count, 0);
     assert.equal(cy.$id('ab').style('curve-style'), 'taxi');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('live: false routes only on request, switching it on starts listening', async () => {
+test('live: false routes only on request, switching it on starts listening', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid, live: false });
-  try {
+  try
+  {
     await routing.ready;
     assert.equal(routes.count, 1, 'the first run still happens');
 
@@ -347,16 +403,20 @@ test('live: false routes only on request, switching it on starts listening', asy
     await wait(30);
     assert.equal(routes.count, 1, 're-routes automatically again');
     assert.ok((routing.getRoute('ab')?.length ?? 0) >= 4);
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('routes while dragging are drafts; releasing routes once more in full', async () => {
+test('routes while dragging are drafts; releasing routes once more in full', async () =>
+{
   const cy = createCy(obstacleElements());
   const routes = countRoutes(cy);
   const routing = cy.libavoid({ avoidLib: avoid, dragRouteInterval: 0 });
-  try {
+  try
+  {
     await routing.ready;
     routes.reset();
     const c = cy.$id('c');
@@ -371,7 +431,9 @@ test('routes while dragging are drafts; releasing routes once more in full', asy
     cy.$id('a').data('value', 1);
     await wait(30);
     assert.equal(routes.count, 2, 'and nothing more while the geometry stays');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });

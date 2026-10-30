@@ -365,8 +365,8 @@ der Anwendung). `cy.destroy()` beendet das Routing automatisch mit.
 
 ```ts
 import cytoscapeLibavoid, {
-  LibavoidRouting, defaults,
-  loadLibavoid, EdgeRouter, defaultRoutingOptions, routeQuality,
+  LibavoidRouting, DEFAULTS,
+  loadLibavoid, EdgeRouter, DEFAULT_ROUTING_OPTIONS, routeQuality,
   WorkerRouter,
 } from './cytoscape-libavoid';
 ```
@@ -375,10 +375,10 @@ import cytoscapeLibavoid, {
 |---|---|---|
 | `default` | `index.ts` | Registrierungsfunktion für `cytoscape.use()` |
 | `LibavoidRouting` | `cytoscape-adapter/libavoid-routing.ts` | Klasse hinter `cy.libavoid()`, siehe 8.3 |
-| `defaults` | `cytoscape-adapter/options.ts` | Standardoptionen (eingefroren) |
+| `DEFAULTS` | `cytoscape-adapter/options.ts` | Standardoptionen (eingefroren) |
 | `loadLibavoid(wasmUrl?)` → `Promise<Avoid>` | `libavoid/load.ts` | Lädt libavoid einmalig und gibt die Instanz zurück. Weitere Aufrufe liefern dasselbe Promise (mit einer anderen URL und einer Warnung). Nach einem Fehler wird beim nächsten Aufruf neu versucht. |
 | `EdgeRouter` | `routing/edge-router.ts` | Routet ein Datenmodell ohne Cytoscape, siehe 8.5 |
-| `defaultRoutingOptions` | `routing/options.ts` | Standardwerte der Routing-Optionen (eingefroren) |
+| `DEFAULT_ROUTING_OPTIONS` | `routing/options.ts` | Standardwerte der Routing-Optionen (eingefroren) |
 | `routeQuality(routes, model)` | `postprocess/route-quality.ts` | `{ overlap, crossings, length }` einer Routenmenge, zum Vergleichen |
 | `WorkerRouter` | `worker/worker-router.ts` | Asynchrones Gegenstück zu `EdgeRouter` in einem Worker mit `routing.worker.ts`: `new WorkerRouter(worker, wasmUrl)`, `route(model, options)`, `busy`, `dispose()` |
 
@@ -511,7 +511,9 @@ libavoid ordnet die Enden einer Seite nach ihrer Richtung, die Mitte bekommt
 also die Kante, die geradeaus läuft. Enden an einer Seite mehr als zwei Kanten,
 setzt das Plugin zum Schluss stattdessen die **dickste** Kante genau in die
 Mitte der Seite; die übrigen behalten ihre Reihenfolge links und rechts davon.
-Das kann direkt am Knoten Kreuzungen erzeugen. Passt der Fächer nicht auf die
+Würde das neue Kreuzungen erzeugen (etwa eine dünne Kante quer über dicke
+schieben, die aus derselben Richtung kommen), bleibt libavoids Reihenfolge;
+auf den Bench-Graphen gilt das für etwa die Hälfte der Seiten. Passt der Fächer nicht auf die
 Seite, wird er enger zusammengeschoben; passt er auch dann nicht, bleibt die
 Seite, wie sie ist. Knicke, die dadurch direkt am Knoten übereinanderliegen,
 schiebt `separateOverlaps` danach noch einmal auseinander. Bei gleich dicken
@@ -574,7 +576,7 @@ Gemessen mit `npm run quality` auf dem Graphen M (128 Knoten, 182 Kanten):
 | | übereinanderliegende Striche | Kreuzungen | Länge |
 |---|--:|--:|--:|
 | nur libavoid | 61.940 px | 1310 | 140.154 |
-| jetzt | **5.802 px** | 1364 | 146.672 |
+| jetzt | **5.686 px** | 1347 | 146.523 |
 
 Keine Kante läuft durch einen Knoten. Die Umwege kosten einen zweiten
 libavoid-Lauf; während des Ziehens wird deshalb ohne sie geroutet (Entwurf),
@@ -821,7 +823,7 @@ Aufbau des Quellcodes (eine Klasse pro Datei, nach Aufgabe in Ordnern):
 | `shared/graph.ts` | – | Das einfache Datenmodell (`GraphModel`, `GraphNode`, `GraphEdge`), `isObstacle`, `nodesById`, `routableEdges`. |
 | `shared/errors.ts` | – | `pluginError()` / `pluginMessage()` mit dem Namen des Plugins, Prüfungen für Optionen. |
 | `cytoscape-adapter/libavoid-routing.ts` | `LibavoidRouting` | Plugin: auf Änderungen hören, routen (im Haupt-Thread oder im Worker), Ergebnisse anwenden. |
-| `cytoscape-adapter/options.ts` | – | `LibavoidOptions`, `defaults`, `RoutedEventInfo`. |
+| `cytoscape-adapter/options.ts` | – | `LibavoidOptions`, `DEFAULTS`, `RoutedEventInfo`. |
 | `cytoscape-adapter/snapshot.ts` | – | Liest das Modell aus `cy` (sichtbare Hindernisse und Kanten). |
 | `cytoscape-adapter/route-style.ts` | – | Route ↔ Cytoscape-Style (reine Geometrie), Beschriftungsposition. |
 | `cytoscape-adapter/edge-styler.ts` | `EdgeStyler` | Setzt und entfernt die Styles auf den Kanten. |
@@ -859,7 +861,18 @@ mit dem Router freigegeben. `EdgeRouter.route()` ruft `dispose()` im
 `finally`-Block auf. Der Test `test/memory.test.ts` prüft, dass alle
 zurückgegebenen Kopien freigegeben werden.
 
-Formatiert wird mit Prettier (`npm run format`, Prüfung: `npm run format:check`).
+Formatiert wird mit dprint (`npm run format`, Prüfung: `npm run format:check`,
+Einstellungen in `dprint.json`). Code-Stil:
+
+- Geschweifte Klammern um jeden `if`-/`else`-/`for`-/`while`-Rumpf, auch
+  einzeilige; die öffnende Klammer steht in der nächsten Zeile (dprint).
+- Keine leeren Blöcke, `catch`es oder Funktionen (oxlint `no-empty`,
+  `no-empty-function`): Fehler werden behandelt oder gemeldet.
+- In `src/`: jedes Interface hat einen JSDoc-Kommentar, mehrzeilige Kommentare
+  sind JSDoc-Kommentare (`/** … */`) statt mehrerer `//`-Zeilen, und
+  Konstanten auf Dateiebene, die Werte enthalten, heißen `UPPER_CASE`
+  (`npm run style:check`, Teil von `npm run lint`; `node scripts/style-check.ts --fix`
+  wandelt `//`-Blöcke um).
 
 ## 16. Lizenz
 

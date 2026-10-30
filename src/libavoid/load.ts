@@ -6,16 +6,17 @@
 // Loads the libavoid WebAssembly module.
 
 import * as libavoidJs from 'libavoid-js';
-import type { Avoid } from './api';
 import { pluginMessage } from '../shared/errors';
+import type { Avoid } from './api';
 
 /** What libavoid-js exports; its own typings say `any`, see api.ts. */
-interface AvoidLibLoader {
+interface AvoidLibLoader
+{
   load(wasmUrl?: string | undefined): Promise<void>;
   getInstance(): Avoid;
 }
 
-const { AvoidLib } = libavoidJs as unknown as { AvoidLib: AvoidLibLoader };
+const AVOID_LIB = (libavoidJs as unknown as { AvoidLib: AvoidLibLoader; }).AvoidLib;
 
 /** The load in progress or done, shared by all callers; null before the first call and after a failed one. */
 let loading: Promise<Avoid> | null = null;
@@ -26,18 +27,22 @@ let loadedUrl: string | undefined;
  *
  * @param wasmUrl where the app serves libavoid.wasm; not needed in Node.js. Only the first call uses it.
  */
-export function loadLibavoid(wasmUrl?: string | undefined): Promise<Avoid> {
-  if (loading && wasmUrl !== undefined && wasmUrl !== loadedUrl) {
+export function loadLibavoid(wasmUrl?: string | undefined): Promise<Avoid>
+{
+  if (loading && wasmUrl !== undefined && wasmUrl !== loadedUrl)
+  {
     // the module is a singleton in libavoid-js, it cannot be loaded from a second URL
     console.warn(
       pluginMessage(`libavoid is already loaded from ${loadedUrl ?? 'the default URL'}, ignoring ${wasmUrl}`),
     );
   }
-  if (!loading) {
+  if (!loading)
+  {
     loadedUrl = wasmUrl;
-    loading = AvoidLib.load(wasmUrl)
-      .then(() => AvoidLib.getInstance())
-      .catch((err: Error) => {
+    loading = AVOID_LIB.load(wasmUrl)
+      .then(() => AVOID_LIB.getInstance())
+      .catch((err: Error) =>
+      {
         loading = null; // allow a retry, e.g. with a corrected wasmUrl
         throw err;
       });

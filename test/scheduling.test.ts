@@ -1,11 +1,12 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { test } from 'node:test';
 import { DragTracker } from '../src/cytoscape-adapter/drag-tracker';
 import { RouteScheduler } from '../src/cytoscape-adapter/route-scheduler';
 import type { ScheduleTiming } from '../src/cytoscape-adapter/route-scheduler';
 import { createCy, obstacleElements, setGrabbed, wait } from './helpers';
 
-function scheduler(timing: Partial<ScheduleTiming> = {}): { scheduler: RouteScheduler; runs: () => number } {
+function scheduler(timing: Partial<ScheduleTiming> = {}): { scheduler: RouteScheduler; runs: () => number; }
+{
   let runs = 0;
   const scheduler = new RouteScheduler(
     { dragging: () => false, restDelay: () => 0, pause: () => 0, ...timing },
@@ -14,9 +15,13 @@ function scheduler(timing: Partial<ScheduleTiming> = {}): { scheduler: RouteSche
   return { scheduler, runs: () => runs };
 }
 
-test('RouteScheduler coalesces calls into one run per frame', async () => {
+test('RouteScheduler coalesces calls into one run per frame', async () =>
+{
   const { scheduler: s, runs } = scheduler();
-  for (let i = 0; i < 10; i++) s.schedule();
+  for (let i = 0; i < 10; i++)
+  {
+    s.schedule();
+  }
   await wait(20);
   assert.equal(runs(), 1);
   s.schedule();
@@ -24,9 +29,11 @@ test('RouteScheduler coalesces calls into one run per frame', async () => {
   assert.equal(runs(), 2, 'schedules again after the run');
 });
 
-test('RouteScheduler waits for the rest delay while dragging, restarted by every call', async () => {
+test('RouteScheduler waits for the rest delay while dragging, restarted by every call', async () =>
+{
   const { scheduler: s, runs } = scheduler({ dragging: () => true, restDelay: () => 50 });
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 5; i++)
+  {
     s.schedule();
     await wait(20);
   }
@@ -35,7 +42,8 @@ test('RouteScheduler waits for the rest delay while dragging, restarted by every
   assert.equal(runs(), 1, 'once it rests');
 });
 
-test('RouteScheduler: a run scheduled before a drag started waits for the rest delay', async () => {
+test('RouteScheduler: a run scheduled before a drag started waits for the rest delay', async () =>
+{
   let dragging = false;
   const { scheduler: s, runs } = scheduler({ dragging: () => dragging, restDelay: () => 50 });
   s.schedule(); // e.g. a style event of the mousedown, before 'grab'
@@ -47,7 +55,8 @@ test('RouteScheduler: a run scheduled before a drag started waits for the rest d
   assert.equal(runs(), 1, 'once it rests');
 });
 
-test('RouteScheduler pauses between runs while dragging', async () => {
+test('RouteScheduler pauses between runs while dragging', async () =>
+{
   const { scheduler: s, runs } = scheduler({ dragging: () => true, pause: () => 60 });
   s.schedule();
   await wait(30);
@@ -56,7 +65,8 @@ test('RouteScheduler pauses between runs while dragging', async () => {
   assert.equal(runs(), 1);
 });
 
-test('RouteScheduler.stop() drops scheduled runs and ignores later calls', async () => {
+test('RouteScheduler.stop() drops scheduled runs and ignores later calls', async () =>
+{
   const { scheduler: s, runs } = scheduler({ dragging: () => true, restDelay: () => 10 });
   s.schedule();
   s.stop();
@@ -65,12 +75,14 @@ test('RouteScheduler.stop() drops scheduled runs and ignores later calls', async
   assert.equal(runs(), 0);
 });
 
-test('DragTracker follows grab / free / remove and survives a missed free', () => {
+test('DragTracker follows grab / free / remove and survives a missed free', () =>
+{
   const cy = createCy(obstacleElements());
   const tracker = new DragTracker();
   cy.on('grab', 'node', tracker.onGrab);
   cy.on('free remove', 'node', tracker.onRelease);
-  try {
+  try
+  {
     const a = cy.$id('a');
     assert.equal(tracker.active, false);
     setGrabbed(a, true);
@@ -87,7 +99,9 @@ test('DragTracker follows grab / free / remove and survives a missed free', () =
     const late = new DragTracker();
     late.reset(cy);
     assert.equal(late.active, true, 'reset() picks up nodes grabbed before');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });

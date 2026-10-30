@@ -11,7 +11,7 @@
 import type { GraphModel } from '../src';
 import { flowWidth } from './flow-width';
 
-export const PLANT_POSITIONS: Readonly<Record<string, { x: number; y: number }>> = {
+export const PLANT_POSITIONS: Readonly<Record<string, { x: number; y: number; }>> = {
   'KW-F': { x: 7.0, y: 5.0 },
   'KW-H': { x: 12.0, y: 3.0 },
   'KW-K': { x: 14.0, y: 3.0 },
@@ -115,7 +115,7 @@ export const PLANT_MAX_QUANTITY = 8000;
  */
 export const PLANT_MAX_WIDTH = 12;
 
-export const PLANT_FLOWS: ReadonlyArray<{ challenge: string; flows: readonly Flow[] }> = [
+export const PLANT_FLOWS: ReadonlyArray<{ challenge: string; flows: readonly Flow[]; }> = [
   {
     challenge: 'fan-out and fan-in that cross each other: sinter and coke into three blast furnaces',
     flows: [
@@ -350,7 +350,8 @@ export const PLANT_FLOWS: ReadonlyArray<{ challenge: string; flows: readonly Flo
   },
 ];
 
-export interface PlantScale {
+export interface PlantScale
+{
   /** Pixels per grid unit. @default 100 */
   grid: number;
   nodeWidth: number;
@@ -364,9 +365,11 @@ export interface PlantScale {
 export const DEFAULT_PLANT_SCALE: Readonly<PlantScale> = Object.freeze({ grid: 100, nodeWidth: 70, nodeHeight: 40 });
 
 /** One entry per flow; a repeated source / target pair gets a numbered id. */
-export function plantFlows(): Array<{ id: string; source: string; target: string; quantity: number }> {
+export function plantFlows(): Array<{ id: string; source: string; target: string; quantity: number; }>
+{
   const seen = new Map<string, number>();
-  return PLANT_FLOWS.flatMap((group) => group.flows).map(([source, target, quantity]) => {
+  return PLANT_FLOWS.flatMap((group) => group.flows).map(([source, target, quantity]) =>
+  {
     const key = `${source}->${target}`;
     const count = (seen.get(key) ?? 0) + 1;
     seen.set(key, count);
@@ -375,7 +378,8 @@ export function plantFlows(): Array<{ id: string; source: string; target: string
 }
 
 /** Node centres in px. */
-export function plantPositions(grid = DEFAULT_PLANT_SCALE.grid): Array<{ id: string; x: number; y: number }> {
+export function plantPositions(grid = DEFAULT_PLANT_SCALE.grid): Array<{ id: string; x: number; y: number; }>
+{
   return Object.entries(PLANT_POSITIONS).map(([id, p]) => ({ id, x: p.x * grid, y: p.y * grid }));
 }
 
@@ -387,7 +391,7 @@ export function plantPositions(grid = DEFAULT_PLANT_SCALE.grid): Array<{ id: str
  * that takes over its members' edges. The groups are from the app, the members
  * are guessed from the names.
  */
-export const PLANT_GROUPS: ReadonlyArray<{ id: string; parent?: string; members: readonly string[] }> = [
+export const PLANT_GROUPS: ReadonlyArray<{ id: string; parent?: string; members: readonly string[]; }> = [
   { id: 'TW', members: ['TW-DS', 'TW-FL', 'TW-R'] },
   { id: 'TK', members: [] },
   { id: 'TH', members: [] },
@@ -419,19 +423,24 @@ export const COLLAPSIBLE_GROUPS: readonly string[] = PLANT_GROUPS.filter((group)
 export const isCollapsible = (groupId: string): boolean => COLLAPSIBLE_GROUPS.includes(groupId);
 
 /** Enclosing groups, innermost first. */
-function ancestorsOf(id: string): string[] {
+function ancestorsOf(id: string): string[]
+{
   const result: string[] = [];
-  for (let parent = PARENT_OF.get(id); parent; parent = PARENT_OF.get(parent)) result.push(parent);
+  for (let parent = PARENT_OF.get(id); parent; parent = PARENT_OF.get(parent))
+  {
+    result.push(parent);
+  }
   return result;
 }
 
-export interface PlantView {
+export interface PlantView
+{
   /** Plant nodes and collapsed groups: the nodes edges attach to. */
-  nodes: Array<{ id: string; x: number; y: number; parent?: string | undefined; collapsed: boolean }>;
+  nodes: Array<{ id: string; x: number; y: number; parent?: string | undefined; collapsed: boolean; }>;
   /** Expanded groups: compound nodes, neither obstacles nor edge ends. */
-  groups: Array<{ id: string; parent?: string | undefined; collapsible: boolean }>;
+  groups: Array<{ id: string; parent?: string | undefined; collapsible: boolean; }>;
   /** Edges between visible nodes; an edge into a collapsed group gets its own id. */
-  edges: Array<{ id: string; source: string; target: string; quantity: number }>;
+  edges: Array<{ id: string; source: string; target: string; quantity: number; }>;
 }
 
 /**
@@ -443,27 +452,44 @@ export interface PlantView {
  */
 export function plantView(
   collapsed: ReadonlySet<string> = new Set(),
-  positions: ReadonlyMap<string, { x: number; y: number }> = new Map(
+  positions: ReadonlyMap<string, { x: number; y: number; }> = new Map(
     plantPositions().map(({ id, x, y }) => [id, { x, y }]),
   ),
-): PlantView {
+): PlantView
+{
   // the outermost collapsed group stands in for everything inside it
-  const representative = (id: string): string => {
+  const representative = (id: string): string =>
+  {
     let result = id;
-    for (const group of ancestorsOf(id)) if (collapsed.has(group) && isCollapsible(group)) result = group;
+    for (const group of ancestorsOf(id))
+    {
+      if (collapsed.has(group) && isCollapsible(group))
+      {
+        result = group;
+      }
+    }
     return result;
   };
   const view: PlantView = { nodes: [], groups: [], edges: [] };
   const leaves = Object.keys(PLANT_POSITIONS);
 
-  for (const id of leaves) {
-    if (representative(id) !== id) continue;
+  for (const id of leaves)
+  {
+    if (representative(id) !== id)
+    {
+      continue;
+    }
     const { x, y } = positions.get(id) ?? { x: 0, y: 0 };
     view.nodes.push({ id, x, y, parent: PARENT_OF.get(id), collapsed: false });
   }
-  for (const group of PLANT_GROUPS) {
-    if (representative(group.id) !== group.id) continue;
-    if (!collapsed.has(group.id) || !group.parent) {
+  for (const group of PLANT_GROUPS)
+  {
+    if (representative(group.id) !== group.id)
+    {
+      continue;
+    }
+    if (!collapsed.has(group.id) || !group.parent)
+    {
       view.groups.push({ id: group.id, parent: group.parent, collapsible: group.parent !== undefined });
       continue;
     }
@@ -475,10 +501,14 @@ export function plantView(
     const y = (Math.min(...ys) + Math.max(...ys)) / 2;
     view.nodes.push({ id: group.id, x, y, parent: group.parent, collapsed: true });
   }
-  for (const flow of plantFlows()) {
+  for (const flow of plantFlows())
+  {
     const source = representative(flow.source);
     const target = representative(flow.target);
-    if (source === target) continue; // inside a collapsed group
+    if (source === target)
+    {
+      continue; // inside a collapsed group
+    }
     const redirected = source !== flow.source || target !== flow.target;
     view.edges.push({ ...flow, id: redirected ? `${flow.id}|${source}->${target}` : flow.id, source, target });
   }
@@ -486,7 +516,8 @@ export function plantView(
 }
 
 /** The plant as a routing model, optionally with collapsed groups; edge widths as drawn in the demo. */
-export function plantModel(scale: Partial<PlantScale> = {}, collapsed: ReadonlySet<string> = new Set()): GraphModel {
+export function plantModel(scale: Partial<PlantScale> = {}, collapsed: ReadonlySet<string> = new Set()): GraphModel
+{
   const { grid, nodeWidth, nodeHeight } = { ...DEFAULT_PLANT_SCALE, ...scale };
   const positions = new Map(plantPositions(grid).map(({ id, x, y }) => [id, { x, y }]));
   const view = plantView(collapsed, positions);

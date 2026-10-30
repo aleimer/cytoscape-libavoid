@@ -1,10 +1,11 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeStyleToPoints, labelOffset, routeToEdgeStyle } from '../src/cytoscape-adapter/route-style';
+import { test } from 'node:test';
 import { EdgeStyler } from '../src/cytoscape-adapter/edge-styler';
+import { edgeStyleToPoints, labelOffset, routeToEdgeStyle } from '../src/cytoscape-adapter/route-style';
 import { createCy, obstacleElements } from './helpers';
 
-test('route -> cytoscape segment style round trip is exact', () => {
+test('route -> cytoscape segment style round trip is exact', () =>
+{
   const points = [
     { x: 30, y: -12 },
     { x: 71, y: -12 },
@@ -16,7 +17,8 @@ test('route -> cytoscape segment style round trip is exact', () => {
   assert.equal(style['curve-style'], 'segments');
   assert.equal(style['source-endpoint'], '30px -12px');
   const back = edgeStyleToPoints(style, { x: 0, y: 0 }, { x: 300, y: -150 });
-  back.forEach((p, i) => {
+  back.forEach((p, i) =>
+  {
     assert.ok(
       Math.abs(p.x - points[i].x) < 0.01 && Math.abs(p.y - points[i].y) < 0.01,
       `point ${i}: ${JSON.stringify(p)}`,
@@ -24,7 +26,8 @@ test('route -> cytoscape segment style round trip is exact', () => {
   });
 });
 
-test('straight routes still produce a valid segments style', () => {
+test('straight routes still produce a valid segments style', () =>
+{
   const straight = [
     { x: 0, y: 0 },
     { x: 100, y: 0 },
@@ -36,7 +39,8 @@ test('straight routes still produce a valid segments style', () => {
   assert.equal(style['segment-distances'], '0');
 });
 
-test('degenerate routes produce no style', () => {
+test('degenerate routes produce no style', () =>
+{
   assert.equal(routeToEdgeStyle(undefined, { x: 0, y: 0 }, { x: 0, y: 0 }), null);
   assert.equal(routeToEdgeStyle([{ x: 5, y: 5 }], { x: 0, y: 0 }, { x: 0, y: 0 }), null);
   const zeroLength = [
@@ -46,7 +50,8 @@ test('degenerate routes produce no style', () => {
   assert.equal(routeToEdgeStyle(zeroLength, { x: 0, y: 0 }, { x: 0, y: 0 }), null);
 });
 
-test('EdgeStyler applies routes, drops rounded corners and restores edges', () => {
+test('EdgeStyler applies routes, drops rounded corners and restores edges', () =>
+{
   const cy = createCy(obstacleElements());
   const styler = new EdgeStyler(cy);
   const edge = cy.$id('ab');
@@ -57,7 +62,8 @@ test('EdgeStyler applies routes, drops rounded corners and restores edges', () =
     { x: 280, y: -50 },
     { x: 280, y: 0 },
   ];
-  try {
+  try
+  {
     styler.apply(new Map([['ab', route]]), { cornerRadius: 8 });
     assert.equal(edge.style('curve-style'), 'round-segments');
 
@@ -71,12 +77,15 @@ test('EdgeStyler applies routes, drops rounded corners and restores edges', () =
     styler.apply(new Map([['ab', route]]));
     styler.clear();
     assert.equal(edge.style('curve-style'), 'taxi', 'clear() restores everything');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });
 
-test('labelOffset moves the label from the middle segment point to the longest horizontal segment', () => {
+test('labelOffset moves the label from the middle segment point to the longest horizontal segment', () =>
+{
   // inner points: (60,0) (60,-50) (280,-50) -> Cytoscape puts the label on the middle one, (60,-50)
   const route = [
     { x: 20, y: 0 },
@@ -100,7 +109,8 @@ test('labelOffset moves the label from the middle segment point to the longest h
   );
 });
 
-test("labelPosition 'longest-segment' sets the label margin, switching back removes it", () => {
+test("labelPosition 'longest-segment' sets the label margin, switching back removes it", () =>
+{
   const cy = createCy(obstacleElements());
   const styler = new EdgeStyler(cy);
   const edge = cy.$id('ab');
@@ -111,12 +121,15 @@ test("labelPosition 'longest-segment' sets the label margin, switching back remo
     { x: 280, y: -50 },
     { x: 280, y: 0 },
   ];
-  try {
+  try
+  {
     styler.apply(new Map([['ab', route]]), { labelPosition: 'longest-segment' });
     assert.equal(edge.numericStyle('text-margin-x'), 110);
     styler.apply(new Map([['ab', route]]), { labelPosition: 'middle' });
     assert.equal(edge.numericStyle('text-margin-x'), 0, 'the bypass is gone');
-  } finally {
+  }
+  finally
+  {
     cy.destroy();
   }
 });

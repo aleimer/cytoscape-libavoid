@@ -1,13 +1,16 @@
-// Where a graph is routed: in this thread (LocalRouter) or in a Web Worker
-// (WorkerRouter). LibavoidRouting only knows this interface, so it has a single
-// code path for both.
+/**
+ * Where a graph is routed: in this thread (LocalRouter) or in a Web Worker
+ * (WorkerRouter). LibavoidRouting only knows this interface, so it has a single
+ * code path for both.
+ */
 
 import type { Point } from '../shared/geometry';
 import type { GraphModel } from '../shared/graph';
 import type { RoutingOptions } from './options';
 
 /** The routes of one run. */
-export interface RouteResult {
+export interface RouteResult
+{
   /** Edge id -> route points, from the source end to the target end. */
   routes: Map<string, Point[]>;
   /**
@@ -18,7 +21,8 @@ export interface RouteResult {
 }
 
 /** Routes graph models, one request after another, in this thread or elsewhere. */
-export interface RoutingBackend {
+export interface RoutingBackend
+{
   /**
    * True if routing blocks this thread while it runs. `dragRouteInterval: 'auto'`
    * only pauses between runs while dragging if it does.

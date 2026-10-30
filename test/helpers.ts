@@ -5,7 +5,8 @@ import type { GraphNode, Point, RoutingWorker } from '../src';
 import { answerRouteRequest } from '../src/worker/answer-route-request';
 import type { RouteRequest, RouteResponse } from '../src/worker/messages';
 
-export interface Rect {
+export interface Rect
+{
   x1: number;
   x2: number;
   y1: number;
@@ -20,7 +21,8 @@ export const box = (node: GraphNode, padding = 0): Rect => ({
 });
 
 /** Does the axis-aligned segment a-b cross the open interior of r? */
-export function segmentHitsRect(a: Point, b: Point, r: Rect): boolean {
+export function segmentHitsRect(a: Point, b: Point, r: Rect): boolean
+{
   const x1 = Math.min(a.x, b.x);
   const x2 = Math.max(a.x, b.x);
   const y1 = Math.min(a.y, b.y);
@@ -29,7 +31,8 @@ export function segmentHitsRect(a: Point, b: Point, r: Rect): boolean {
 }
 
 /** A headless Cytoscape graph with 40 x 40 px nodes and 3 px taxi edges. */
-export function createCy(elements: ElementDefinition[]): Core {
+export function createCy(elements: ElementDefinition[]): Core
+{
   return cytoscape({
     headless: true,
     styleEnabled: true,
@@ -55,22 +58,29 @@ export const obstacleElements = (): ElementDefinition[] => [
  * flag and the `grab` event the renderer fires. Releasing fires no `free`, the
  * tests emit it themselves where the release matters.
  */
-export function setGrabbed(node: NodeSingular, grabbed: boolean): void {
-  (node as unknown as { _private: { grabbed: boolean } })._private.grabbed = grabbed;
-  if (grabbed) node.emit('grab');
+export function setGrabbed(node: NodeSingular, grabbed: boolean): void
+{
+  (node as unknown as { _private: { grabbed: boolean; }; })._private.grabbed = grabbed;
+  if (grabbed)
+  {
+    node.emit('grab');
+  }
 }
 
 export const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Counts the `avoidrouted` events of a graph. */
-export function countRoutes(cy: Core): { readonly count: number; reset(): void } {
+export function countRoutes(cy: Core): { readonly count: number; reset(): void; }
+{
   let count = 0;
   cy.on('avoidrouted', () => count++);
   return {
-    get count() {
+    get count()
+    {
       return count;
     },
-    reset() {
+    reset()
+    {
       count = 0;
     },
   };
@@ -83,7 +93,8 @@ type ErrorListener = (event: Event) => void;
  * Stands in for a Web Worker running routing.worker.ts: answers asynchronously
  * after `delayMs`. Requests go through structuredClone, as with a real worker.
  */
-export class InProcessWorker implements RoutingWorker {
+export class InProcessWorker implements RoutingWorker
+{
   readonly requests: RouteRequest[] = [];
   delayMs = 5;
   /** Like a worker whose script did not load: requests are never answered. */
@@ -93,33 +104,59 @@ export class InProcessWorker implements RoutingWorker {
   private readonly listeners = new Set<WorkerListener>();
   private readonly errorListeners = new Set<ErrorListener>();
 
-  postMessage(request: RouteRequest): void {
+  postMessage(request: RouteRequest): void
+  {
     const copy = structuredClone(request); // throws for functions and other uncloneable options
     this.requests.push(copy);
-    if (this.silent) return;
-    setTimeout(async () => {
+    if (this.silent)
+    {
+      return;
+    }
+    setTimeout(async () =>
+    {
       const response = this.answerError ? { id: copy.id, error: this.answerError } : await answerRouteRequest(copy);
-      for (const listener of this.listeners) listener({ data: response } as MessageEvent<RouteResponse>);
+      for (const listener of this.listeners)
+      {
+        listener({ data: response } as MessageEvent<RouteResponse>);
+      }
     }, this.delayMs);
   }
 
   /** Fires `error` like a worker whose script failed to load. */
-  fail(message: string): void {
+  fail(message: string): void
+  {
     const event = Object.assign(new Event('error'), { message });
-    for (const listener of this.errorListeners) listener(event);
+    for (const listener of this.errorListeners)
+    {
+      listener(event);
+    }
   }
 
   addEventListener(type: 'message', listener: WorkerListener): void;
   addEventListener(type: 'error' | 'messageerror', listener: ErrorListener): void;
-  addEventListener(type: string, listener: WorkerListener | ErrorListener): void {
-    if (type === 'message') this.listeners.add(listener as WorkerListener);
-    else this.errorListeners.add(listener as ErrorListener);
+  addEventListener(type: string, listener: WorkerListener | ErrorListener): void
+  {
+    if (type === 'message')
+    {
+      this.listeners.add(listener as WorkerListener);
+    }
+    else
+    {
+      this.errorListeners.add(listener as ErrorListener);
+    }
   }
 
   removeEventListener(type: 'message', listener: WorkerListener): void;
   removeEventListener(type: 'error' | 'messageerror', listener: ErrorListener): void;
-  removeEventListener(type: string, listener: WorkerListener | ErrorListener): void {
-    if (type === 'message') this.listeners.delete(listener as WorkerListener);
-    else this.errorListeners.delete(listener as ErrorListener);
+  removeEventListener(type: string, listener: WorkerListener | ErrorListener): void
+  {
+    if (type === 'message')
+    {
+      this.listeners.delete(listener as WorkerListener);
+    }
+    else
+    {
+      this.errorListeners.delete(listener as ErrorListener);
+    }
   }
 }

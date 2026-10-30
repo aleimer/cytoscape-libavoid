@@ -99,7 +99,8 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 Every edge attaches to one of four pins in the middle of the node sides; libavoid
 picks the side and spreads the edge ends apart along it. Where more than two
 edges end at one side, the thickest one ends at the centre of the side and the
-others fan out around it (this may add crossings right next to the node).
+others fan out around it, unless that would add crossings (e.g. push a thin edge
+across thick ones arriving from the same direction); then libavoid's order stays.
 
 ## Route quality
 
@@ -126,7 +127,7 @@ length on the bench graphs. On 128 nodes / 182 edges:
 | | overlapping strokes | crossings | length |
 |---|--:|--:|--:|
 | libavoid only | 61,940 px | 1310 | 140,154 |
-| now | **5,802 px** | 1364 | 146,672 |
+| now | **5,686 px** | 1347 | 146,523 |
 
 No edge runs through a node in any of them.
 
@@ -215,7 +216,7 @@ routes.get('ab'); // [{ x, y }, …] from source to target
 
 ```ts
 const router = new WorkerRouter(worker, wasmUrl); // a Worker running routing.worker.ts
-const { routes, routingMs } = await router.route(model, defaultRoutingOptions);
+const { routes, routingMs } = await router.route(model, DEFAULT_ROUTING_OPTIONS);
 ```
 
 Both implement `RoutingBackend`, the interface the plugin routes through.
@@ -230,7 +231,8 @@ npm install
 npm run typecheck   # tsc over everything, plus src/ with every strictness flag (tsconfig.strict.json)
 npm test            # node:test, incl. a headless Cytoscape integration test
 npm run test:e2e    # drags nodes of the demo in Chrome (playwright-core, uses the installed Chrome)
-npm run lint        # oxlint
+npm run lint        # oxlint, plus the style rules of src/ (scripts/style-check.ts)
+npm run format      # dprint (braces on their own line, see dprint.json); format:check only checks
 npm run deps:check  # layering rules of src/ (.dependency-cruiser.cjs)
 npm run deps        # import graph of src/ as Mermaid -> docs/dependencies.md
 npm run perf        # routing core benchmark

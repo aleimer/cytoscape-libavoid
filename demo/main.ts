@@ -33,7 +33,8 @@ const plant = params.get('graph') === 'plant';
 const collapsed = new Set<string>();
 /** Plant node positions, updated from the graph so a collapse keeps what was dragged. */
 const plantNodePositions = new Map(plantPositions().map(({ id, x, y }) => [id, { x, y }]));
-function plantElements(): ElementDefinition[] {
+function plantElements(): ElementDefinition[]
+{
   const view = plantView(collapsed, plantNodePositions);
   return [
     ...view.groups.map(({ id, parent, collapsible }) => ({
@@ -129,9 +130,16 @@ const stats = $('stats');
 const useWorker = params.has('worker');
 const workerToggle = $<HTMLInputElement>('worker');
 workerToggle.checked = useWorker;
-const reloadWith = (key: string, value: string | undefined): void => {
-  if (value === undefined) params.delete(key);
-  else params.set(key, value);
+const reloadWith = (key: string, value: string | undefined): void =>
+{
+  if (value === undefined)
+  {
+    params.delete(key);
+  }
+  else
+  {
+    params.set(key, value);
+  }
   location.search = params.toString();
 };
 workerToggle.addEventListener('change', () => reloadWith('worker', workerToggle.checked ? '1' : undefined));
@@ -144,26 +152,46 @@ const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm', worker 
 // for trying things out in the browser console
 Object.assign(window, { demo: { cy, routing } });
 routing.ready.catch((err: Error) => (stats.textContent = 'Fehler: ' + err.message));
-cy.on('avoidrouted', (_evt, info: RoutedEventInfo) => {
-  stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${info.totalMs.toFixed(1)} ms`;
+cy.on('avoidrouted', (_evt, info: RoutedEventInfo) =>
+{
+  stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${
+    info.totalMs.toFixed(1)
+  } ms`;
 });
 
-if (plant) {
-  cy.on('dbltap', 'node.collapsible, node.collapsed', (event) => {
+if (plant)
+{
+  cy.on('dbltap', 'node.collapsible, node.collapsed', (event) =>
+  {
     const id: string = event.target.id();
-    if (!isCollapsible(id)) return;
-    for (const node of cy.nodes('.plant:childless').toArray()) {
-      if (!node.hasClass('collapsed')) plantNodePositions.set(node.id(), { ...node.position() });
+    if (!isCollapsible(id))
+    {
+      return;
     }
-    if (collapsed.has(id)) collapsed.delete(id);
-    else collapsed.add(id);
-    cy.batch(() => {
+    for (const node of cy.nodes('.plant:childless').toArray())
+    {
+      if (!node.hasClass('collapsed'))
+      {
+        plantNodePositions.set(node.id(), { ...node.position() });
+      }
+    }
+    if (collapsed.has(id))
+    {
+      collapsed.delete(id);
+    }
+    else
+    {
+      collapsed.add(id);
+    }
+    cy.batch(() =>
+    {
       cy.elements().remove();
       cy.add(plantElements());
     });
   });
 }
 
-for (const id of ['rerouteOnDrag', 'dragRouteDelay', 'hideEdgesOnDrag', 'labelPosition']) {
+for (const id of ['rerouteOnDrag', 'dragRouteDelay', 'hideEdgesOnDrag', 'labelPosition'])
+{
   $(id).addEventListener('input', () => routing.setOptions(read()));
 }

@@ -7,7 +7,8 @@ import type { GraphEdge, GraphModel, GraphNode } from '../shared/graph';
 import type { LibavoidOptions } from './options';
 
 /** The routing input at one moment. */
-export interface Snapshot {
+export interface Snapshot
+{
   model: GraphModel;
   /** The model serialised: a run is skipped if it equals the last run's key. */
   key: string;
@@ -29,7 +30,8 @@ export type ModelOptions = Pick<LibavoidOptions, 'edges' | 'obstacles' | 'includ
  *
  * @param draft a node is being dragged
  */
-export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): Snapshot {
+export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): Snapshot
+{
   const nodePositions = new Map<string, Point>();
   const model = readModel(cy, options, nodePositions);
   return { model, key: JSON.stringify(model), nodePositions, draft };
@@ -42,7 +44,8 @@ export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): S
  *
  * @param nodePositions filled with the position of every node in the model
  */
-export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<string, Point> = new Map()): GraphModel {
+export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<string, Point> = new Map()): GraphModel
+{
   const obstacles = cy
     .nodes(options.obstacles)
     .toArray() // Collection.filter() loses the element type
@@ -53,7 +56,8 @@ export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<st
     .flatMap((edge) => [edge.source(), edge.target()])
     .filter((node) => !obstacleIds.has(node.id()));
 
-  const toNode = (node: NodeSingular, obstacle: boolean): GraphNode => {
+  const toNode = (node: NodeSingular, obstacle: boolean): GraphNode =>
+  {
     const { x, y } = node.position();
     nodePositions.set(node.id(), { x, y });
     return graphNodeOf(node, obstacle, options.includeLabels);
@@ -68,7 +72,8 @@ export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<st
 }
 
 /** Visible, between two visible nodes, neither inside the other. */
-function isRoutable(edge: EdgeSingular): boolean {
+function isRoutable(edge: EdgeSingular): boolean
+{
   const source = edge.source();
   const target = edge.target();
   return (
@@ -81,13 +86,15 @@ function isRoutable(edge: EdgeSingular): boolean {
 }
 
 /** The node's bounding box, so its border (and with `includeLabels` its label) counts. */
-function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boolean): GraphNode {
+function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boolean): GraphNode
+{
   const box = node.boundingBox({ includeLabels, includeOverlays: false });
   const centre = { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
   return { id: node.id(), ...centre, width: box.w, height: box.h, ...(obstacle ? {} : { obstacle: false }) };
 }
 
-function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge {
+function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge
+{
   const sides = options.edgeSides?.(edge);
   return {
     id: edge.id(),
@@ -100,7 +107,8 @@ function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge {
 }
 
 /** `{ [key]: valid sides }`, or nothing if all four are allowed. */
-function sidesOf(key: 'sourceSides' | 'targetSides', sides: Side | readonly Side[] | undefined): Partial<GraphEdge> {
+function sidesOf(key: 'sourceSides' | 'targetSides', sides: Side | readonly Side[] | undefined): Partial<GraphEdge>
+{
   const valid = [...new Set(typeof sides === 'string' ? [sides] : (sides ?? []))].filter(isSide);
   return valid.length && valid.length < SIDES.length ? { [key]: valid } : {};
 }

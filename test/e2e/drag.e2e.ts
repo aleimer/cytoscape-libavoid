@@ -2,19 +2,21 @@
 // their real order, which the headless tests only simulate. Run with
 // `npm run test:e2e` (builds the demo first). Uses the installed Chrome;
 // CHROME_PATH selects another Chromium-based browser.
-import { test, before, after } from 'node:test';
+import type { Core } from 'cytoscape';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { after, before, test } from 'node:test';
 import { chromium } from 'playwright-core';
 import type { Browser, Page } from 'playwright-core';
-import type { Core } from 'cytoscape';
 import type { LibavoidOptions, LibavoidRouting } from '../../src';
 
-declare global {
-  interface Window {
+declare global
+{
+  interface Window
+  {
     /** Set by demo/main.ts. */
-    demo: { cy: Core; routing: LibavoidRouting };
+    demo: { cy: Core; routing: LibavoidRouting; };
     /** Counts `avoidrouted` events, see countRoutes(). */
     routed: number;
   }
@@ -25,9 +27,11 @@ let server: ChildProcess;
 let browser: Browser;
 let page: Page;
 
-before(async () => {
+before(async () =>
+{
   server = spawn(process.execPath, ['scripts/serve.ts'], { env: { ...process.env, PORT: String(PORT) } });
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolve, reject) =>
+  {
     server.stdout!.on('data', (chunk: Buffer) => chunk.toString().includes('demo:') && resolve());
     server.once('exit', (code) => reject(new Error(`demo server exited with ${code}`)));
   });
@@ -42,7 +46,8 @@ before(async () => {
   assert.deepEqual(errors, []);
 });
 
-after(async () => {
+after(async () =>
+{
   await browser?.close();
   server?.kill();
 });
@@ -50,8 +55,10 @@ after(async () => {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Starts counting `avoidrouted` events from 0. */
-async function countRoutes(): Promise<void> {
-  await page.evaluate(() => {
+async function countRoutes(): Promise<void>
+{
+  await page.evaluate(() =>
+  {
     window.routed = 0;
     window.demo.cy.off('avoidrouted');
     window.demo.cy.on('avoidrouted', () => window.routed++);
@@ -59,8 +66,10 @@ async function countRoutes(): Promise<void> {
 }
 
 /** Returns nothing: Playwright would serialise the returned routing object, which blocks the page for seconds. */
-async function setOptions(options: Partial<LibavoidOptions>): Promise<void> {
-  await page.evaluate((changes) => {
+async function setOptions(options: Partial<LibavoidOptions>): Promise<void>
+{
+  await page.evaluate((changes) =>
+  {
     window.demo.routing.setOptions(changes);
   }, options);
 }
@@ -69,15 +78,18 @@ const routed = () => page.evaluate(() => window.routed);
 const opacity = (edgeId: string) => page.evaluate((id) => Number(window.demo.cy.$id(id).style('line-opacity')), edgeId);
 
 /** Where a node is on the page. */
-function nodeOnPage(id: string): Promise<{ x: number; y: number }> {
-  return page.evaluate((nodeId) => {
+function nodeOnPage(id: string): Promise<{ x: number; y: number; }>
+{
+  return page.evaluate((nodeId) =>
+  {
     const { x, y } = window.demo.cy.$id(nodeId).renderedPosition();
     const container = window.demo.cy.container()!.getBoundingClientRect();
     return { x: container.left + x, y: container.top + y };
   }, id);
 }
 
-test('dragRouteDelay + hideEdgesOnDrag: hidden while moving, routed when resting, routed in full on release', async () => {
+test('dragRouteDelay + hideEdgesOnDrag: hidden while moving, routed when resting, routed in full on release', async () =>
+{
   await setOptions({ dragRouteDelay: 200, hideEdgesOnDrag: true });
   await sleep(300);
   await countRoutes();
@@ -86,7 +98,8 @@ test('dragRouteDelay + hideEdgesOnDrag: hidden while moving, routed when resting
   const start = await nodeOnPage('montage');
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  for (let step = 1; step <= 10; step++) {
+  for (let step = 1; step <= 10; step++)
+  {
     await page.mouse.move(start.x + step * 8, start.y + step * 4);
     await sleep(30);
   }
@@ -107,7 +120,8 @@ test('dragRouteDelay + hideEdgesOnDrag: hidden while moving, routed when resting
   assert.ok(moved.x > 540, 'the node moved');
 });
 
-test('without the options, routes follow the drag', async () => {
+test('without the options, routes follow the drag', async () =>
+{
   await setOptions({ dragRouteDelay: 0, hideEdgesOnDrag: false });
   await sleep(300);
   await countRoutes();
@@ -116,7 +130,8 @@ test('without the options, routes follow the drag', async () => {
   const start = await nodeOnPage('fraese');
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  for (let step = 1; step <= 10; step++) {
+  for (let step = 1; step <= 10; step++)
+  {
     await page.mouse.move(start.x, start.y + step * 6);
     await sleep(40);
   }

@@ -9,7 +9,8 @@ const MIN_WIDTH = 3;
  * largest flow of the graph, on a square-root scale, so 20 t next to 8000 t
  * still shows.
  */
-export function flowWidth(quantity: number, maxQuantity: number, maxWidth: number): number {
+export function flowWidth(quantity: number, maxQuantity: number, maxWidth: number): number
+{
   const share = maxQuantity > 0 ? Math.min(1, Math.max(0, quantity) / maxQuantity) : 0;
   return Math.round((MIN_WIDTH + (maxWidth - MIN_WIDTH) * Math.sqrt(share)) * 10) / 10;
 }

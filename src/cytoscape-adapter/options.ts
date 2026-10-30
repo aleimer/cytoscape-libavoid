@@ -2,10 +2,10 @@
 
 import type { EdgeSingular } from 'cytoscape';
 import type { Avoid } from '../libavoid/api';
-import type { Side } from '../shared/geometry';
-import { checkNonNegative, checkOneOf, pluginError } from '../shared/errors';
-import { defaultRoutingOptions, resolveRoutingOptions } from '../routing/options';
+import { DEFAULT_ROUTING_OPTIONS, resolveRoutingOptions } from '../routing/options';
 import type { RoutingOptions } from '../routing/options';
+import { checkNonNegative, checkOneOf, pluginError } from '../shared/errors';
+import type { Side } from '../shared/geometry';
 import type { RoutingWorker } from '../worker/messages';
 import type { EdgeStyleOptions } from './route-style';
 
@@ -13,7 +13,8 @@ import type { EdgeStyleOptions } from './route-style';
  * The options after the defaults are applied. `cy.libavoid()` and `setOptions()`
  * take any part of them; only the fields marked `?` have no default.
  */
-export interface LibavoidOptions extends RoutingOptions {
+export interface LibavoidOptions extends RoutingOptions
+{
   /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
   wasmUrl?: string | undefined;
   /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. Not used with `worker`. */
@@ -86,7 +87,8 @@ export interface LibavoidOptions extends RoutingOptions {
 }
 
 /** Result of the `edgeSides` option. */
-export interface EdgeSides {
+export interface EdgeSides
+{
   /** The side(s) of the source node the edge may leave from; missing = all four. */
   source?: Side | readonly Side[] | undefined;
   /** The side(s) of the target node the edge may end at; missing = all four. */
@@ -94,7 +96,8 @@ export interface EdgeSides {
 }
 
 /** Payload of the `avoidrouted` event. */
-export interface RoutedEventInfo {
+export interface RoutedEventInfo
+{
   /** Number of routed edges. */
   edges: number;
   /** How long routing took (ms): libavoid plus the post-processing, in this thread or the worker. */
@@ -104,8 +107,8 @@ export interface RoutedEventInfo {
 }
 
 /** The defaults of LibavoidOptions, frozen; `cy.libavoid(options)` merges `options` onto them. */
-export const defaults: Readonly<LibavoidOptions> = Object.freeze({
-  ...defaultRoutingOptions,
+export const DEFAULTS: Readonly<LibavoidOptions> = Object.freeze({
+  ...DEFAULT_ROUTING_OPTIONS,
   edges: 'edge',
   obstacles: 'node:childless',
   includeLabels: false,
@@ -120,17 +123,29 @@ export const defaults: Readonly<LibavoidOptions> = Object.freeze({
 });
 
 /** Merges options onto the defaults, checks them and freezes the result; invalid options throw. */
-export function resolveOptions(options: Partial<LibavoidOptions>): Readonly<LibavoidOptions> {
-  const resolved = resolveRoutingOptions(defaults, options);
+export function resolveOptions(options: Partial<LibavoidOptions>): Readonly<LibavoidOptions>
+{
+  const resolved = resolveRoutingOptions(DEFAULTS, options);
   checkNonNegative('cornerRadius', resolved.cornerRadius);
   checkNonNegative('dragRouteDelay', resolved.dragRouteDelay);
-  if (resolved.dragRouteInterval !== 'auto') checkNonNegative('dragRouteInterval', resolved.dragRouteInterval);
-  checkOneOf('labelPosition', resolved.labelPosition, ['middle', 'longest-segment']);
-  for (const name of ['edges', 'obstacles'] as const) {
-    if (typeof resolved[name] !== 'string') throw pluginError(`option ${name} must be a selector string`);
+  if (resolved.dragRouteInterval !== 'auto')
+  {
+    checkNonNegative('dragRouteInterval', resolved.dragRouteInterval);
   }
-  if (typeof resolved.edgeWidth !== 'function') throw pluginError('option edgeWidth must be a function');
-  if (resolved.edgeSides !== undefined && typeof resolved.edgeSides !== 'function') {
+  checkOneOf('labelPosition', resolved.labelPosition, ['middle', 'longest-segment']);
+  for (const name of ['edges', 'obstacles'] as const)
+  {
+    if (typeof resolved[name] !== 'string')
+    {
+      throw pluginError(`option ${name} must be a selector string`);
+    }
+  }
+  if (typeof resolved.edgeWidth !== 'function')
+  {
+    throw pluginError('option edgeWidth must be a function');
+  }
+  if (resolved.edgeSides !== undefined && typeof resolved.edgeSides !== 'function')
+  {
     throw pluginError('option edgeSides must be a function');
   }
   return resolved;

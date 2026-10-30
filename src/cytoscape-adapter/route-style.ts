@@ -1,16 +1,19 @@
-// Turns routes into Cytoscape `segments` edge styles and back; EdgeStyler
-// (edge-styler.ts) applies them.
-//
-// With `edge-distances: endpoints` and manual `source-endpoint` /
-// `target-endpoint`, Cytoscape places segment point i at
-//   S + w_i * (T - S) + d_i * n,   n = (-(T-S).y, (T-S).x) / |T-S|
-// where S / T are the manual endpoints (start / end below). routeToEdgeStyle()
-// inverts exactly that: weight w_i and distance d_i of every inner route point.
+/**
+ * Turns routes into Cytoscape `segments` edge styles and back; EdgeStyler
+ * (edge-styler.ts) applies them.
+ *
+ * With `edge-distances: endpoints` and manual `source-endpoint` /
+ * `target-endpoint`, Cytoscape places segment point i at
+ *   S + w_i * (T - S) + d_i * n,   n = (-(T-S).y, (T-S).x) / |T-S|
+ * where S / T are the manual endpoints (start / end below). routeToEdgeStyle()
+ * inverts exactly that: weight w_i and distance d_i of every inner route point.
+ */
 
 import type { Point } from '../shared/geometry';
 
 /** The style bypass that makes Cytoscape draw an edge along a route. */
-export interface EdgeSegmentStyle {
+export interface EdgeSegmentStyle
+{
   'curve-style': 'segments' | 'round-segments';
   'edge-distances': 'endpoints';
   'source-endpoint': string;
@@ -39,7 +42,8 @@ export const STYLE_PROPS: ReadonlyArray<keyof EdgeSegmentStyle> = [
 ];
 
 /** How routes are drawn; the options of the same name of `cy.libavoid()`. */
-export interface EdgeStyleOptions {
+export interface EdgeStyleOptions
+{
   /** 0 = sharp corners, > 0 = rounded corners with this radius (px). */
   cornerRadius: number;
   /**
@@ -50,7 +54,7 @@ export interface EdgeStyleOptions {
   labelPosition: 'middle' | 'longest-segment';
 }
 
-const defaultStyleOptions: EdgeStyleOptions = { cornerRadius: 0, labelPosition: 'middle' };
+const DEFAULT_STYLE_OPTIONS: EdgeStyleOptions = { cornerRadius: 0, labelPosition: 'middle' };
 
 /** Weights are fractions of the edge length, so they keep more digits than the route coordinates. */
 const STYLE_PRECISION = 10000;
@@ -74,14 +78,21 @@ export function routeToEdgeStyle(
   sourceCentre: Point,
   targetCentre: Point,
   options: Partial<EdgeStyleOptions> = {},
-): EdgeSegmentStyle | null {
-  const { cornerRadius, labelPosition } = { ...defaultStyleOptions, ...options };
+): EdgeSegmentStyle | null
+{
+  const { cornerRadius, labelPosition } = { ...DEFAULT_STYLE_OPTIONS, ...options };
   const start = points?.[0];
   const end = points?.[points.length - 1];
-  if (!points || !start || !end || points.length < 2) return null;
+  if (!points || !start || !end || points.length < 2)
+  {
+    return null;
+  }
   const along = { x: end.x - start.x, y: end.y - start.y };
   const lengthSquared = along.x * along.x + along.y * along.y;
-  if (lengthSquared < MIN_LENGTH_SQUARED) return null;
+  if (lengthSquared < MIN_LENGTH_SQUARED)
+  {
+    return null;
+  }
   const length = Math.sqrt(lengthSquared);
   const normal = { x: -along.y / length, y: along.x / length };
 
@@ -89,7 +100,8 @@ export function routeToEdgeStyle(
   const inner = points.length > 2 ? points.slice(1, -1) : [{ x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }];
   const weights: string[] = [];
   const distances: string[] = [];
-  for (const point of inner) {
+  for (const point of inner)
+  {
     const fromStart = { x: point.x - start.x, y: point.y - start.y };
     weights.push(format((fromStart.x * along.x + fromStart.y * along.y) / lengthSquared));
     distances.push(format(fromStart.x * normal.x + fromStart.y * normal.y));
@@ -103,11 +115,13 @@ export function routeToEdgeStyle(
     'segment-weights': weights.join(' '),
     'segment-distances': distances.join(' '),
   };
-  if (cornerRadius > 0) {
+  if (cornerRadius > 0)
+  {
     style['segment-radii'] = cornerRadius;
     style['radius-type'] = 'arc-radius';
   }
-  if (labelPosition === 'longest-segment') {
+  if (labelPosition === 'longest-segment')
+  {
     const offset = labelOffset(points, inner);
     style['text-margin-x'] = Math.round(offset.x * 100) / 100;
     style['text-margin-y'] = Math.round(offset.y * 100) / 100;
@@ -124,24 +138,38 @@ export function routeToEdgeStyle(
  *
  * @param bendPoints the points between the endpoints, which Cytoscape calls segment points
  */
-export function labelOffset(points: readonly Point[], bendPoints: readonly Point[]): Point {
+export function labelOffset(points: readonly Point[], bendPoints: readonly Point[]): Point
+{
   const count = bendPoints.length;
   const a = bendPoints[Math.floor((count - 1) / 2)];
   const b = bendPoints[Math.floor(count / 2)];
-  if (!a || !b) return { x: 0, y: 0 };
+  if (!a || !b)
+  {
+    return { x: 0, y: 0 };
+  }
   const cytoscapeMiddle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 
   let longest: [Point, Point] | undefined;
   let longestHorizontal: [Point, Point] | undefined;
   const lengthOf = (segment: [Point, Point] | undefined): number =>
     segment ? Math.hypot(segment[1].x - segment[0].x, segment[1].y - segment[0].y) : 0;
-  for (let i = 1; i < points.length; i++) {
+  for (let i = 1; i < points.length; i++)
+  {
     const segment: [Point, Point] = [points[i - 1]!, points[i]!];
-    if (lengthOf(segment) > lengthOf(longest)) longest = segment;
-    if (segment[0].y === segment[1].y && lengthOf(segment) > lengthOf(longestHorizontal)) longestHorizontal = segment;
+    if (lengthOf(segment) > lengthOf(longest))
+    {
+      longest = segment;
+    }
+    if (segment[0].y === segment[1].y && lengthOf(segment) > lengthOf(longestHorizontal))
+    {
+      longestHorizontal = segment;
+    }
   }
   const chosen = lengthOf(longestHorizontal) >= lengthOf(longest) / 2 ? longestHorizontal : longest;
-  if (!chosen) return { x: 0, y: 0 };
+  if (!chosen)
+  {
+    return { x: 0, y: 0 };
+  }
   const centre = { x: (chosen[0].x + chosen[1].x) / 2, y: (chosen[0].y + chosen[1].y) / 2 };
   return { x: centre.x - cytoscapeMiddle.x, y: centre.y - cytoscapeMiddle.y };
 }
@@ -151,7 +179,8 @@ export function edgeStyleToPoints(
   style: Pick<EdgeSegmentStyle, 'source-endpoint' | 'target-endpoint' | 'segment-weights' | 'segment-distances'>,
   sourceCentre: Point,
   targetCentre: Point,
-): Point[] {
+): Point[]
+{
   const numbers = (value: string): number[] => value.split(/\s+/).map(parseFloat);
   const [startX = 0, startY = 0] = numbers(style['source-endpoint']);
   const [endX = 0, endY = 0] = numbers(style['target-endpoint']);
@@ -161,7 +190,8 @@ export function edgeStyleToPoints(
   const length = Math.hypot(along.x, along.y);
   const normal = { x: -along.y / length, y: along.x / length };
   const distances = numbers(style['segment-distances']);
-  const inner = numbers(style['segment-weights']).map((weight, i) => {
+  const inner = numbers(style['segment-weights']).map((weight, i) =>
+  {
     const distance = distances[i] ?? 0;
     return { x: start.x + weight * along.x + distance * normal.x, y: start.y + weight * along.y + distance * normal.y };
   });

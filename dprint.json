@@ -1,0 +1,20 @@
+{
+  "lineWidth": 120,
+  "indentWidth": 2,
+  "typescript": {
+    "quoteStyle": "preferSingle",
+    "semiColons": "always",
+    "trailingCommas": "onlyMultiLine",
+    "operatorPosition": "sameLine",
+    "arrowFunction.useParentheses": "force",
+    "bracePosition": "nextLine",
+    "useBraces": "always",
+    "nextControlFlowPosition": "nextLine"
+  },
+  "json": {},
+  "excludes": ["node_modules", "demo/build", "bench/angular", "package-lock.json"],
+  "plugins": [
+    "npm:@dprint/typescript@0.96.1",
+    "npm:@dprint/json@0.25.2"
+  ]
+}

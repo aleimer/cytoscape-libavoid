@@ -27,7 +27,8 @@ For code that used 0.1.0:
 | `routeGraph(avoid, model, options)` | `new EdgeRouter(avoid, options).route(model)` |
 | graph model nodes `{ w, h }` | `{ width, height }` |
 | `routing.routes` / `styled` / `Avoid` / `destroyed` writable | `routes` is a read-only getter, the rest is private |
-| `defaults` mutable | frozen; instances no longer share `routingParameters` / `routingOptions` with it |
+| `defaults` mutable | `DEFAULTS`, frozen; instances no longer share `routingParameters` / `routingOptions` with it |
+| `defaultRoutingOptions` | `DEFAULT_ROUTING_OPTIONS` (file-level constants are UPPER_CASE) |
 | `register(undefined)` was a no-op | `register(cytoscape)` needs Cytoscape |
 | `routeToEdgeStyle(points, source, target, cornerRadius)` | `routeToEdgeStyle(points, source, target, { cornerRadius, labelPosition })` |
 | routes could lie on top of each other | `separateOverlaps` and `detourCrowded` are on by default; a full run takes about twice as long, see below |
@@ -82,11 +83,11 @@ Bench graph with 128 nodes / 182 edges (`npm run quality`):
 | | overlapping strokes | crossings |
 |---|--:|--:|
 | 0.1.0 (`ports: 'auto'`) | 61,940 px | 1310 |
-| now | 5,802 px | 1364 |
+| now | 5,686 px | 1347 |
 
 Where more than two edges end at one node side, the thickest one now ends at
-the centre of the side; the others keep their order around it. This adds a
-few crossings next to such nodes.
+the centre of the side; the others keep their order around it. Sides where
+that would add crossings keep libavoid's order.
 
 ### Performance
 
