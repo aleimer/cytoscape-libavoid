@@ -9,6 +9,7 @@ import { isObstacle, nodesById, routableEdges } from '../shared/graph';
 import type { Point, Side } from '../shared/geometry';
 import type { GraphEdge, GraphModel, GraphNode } from '../shared/graph';
 import { findDetoursIn } from '../postprocess/detour-finder';
+import { centreThickestEdgesIn } from '../postprocess/thickest-edge-centring';
 import { separateOverlapsIn } from '../postprocess/overlap-separator';
 import { measureQuality } from '../postprocess/route-quality';
 import type { RouteQuality } from '../postprocess/route-quality';
@@ -56,7 +57,8 @@ export class EdgeRouter {
    * Routes once with libavoid, looks for edges that do not fit into crowded gaps
    * and spreads apart overlapping segments. If some edges need a detour, routes a
    * second time through checkpoints in wider gaps and keeps whichever result is
-   * better (see isBetter()). Loops and edges with a missing end are skipped.
+   * better (see isBetter()). Finally the thickest edge on a node side with more
+   * than two edge ends moves to its centre. Loops and edges with a missing end are skipped.
    *
    * @returns edge id -> route points, from the source end to the target end
    */
@@ -65,10 +67,14 @@ export class EdgeRouter {
     const first = new RouteGeometry(this.routeOnce(routable), routable);
     const detours = this.options.detourCrowded ? this.findDetours(first) : new Map<string, Point>();
     this.separate(first);
-    if (detours.size === 0) return first.routes;
-    const second = new RouteGeometry(this.routeOnce(routable, detours), routable);
-    this.separate(second);
-    return isBetter(measureQuality(second), measureQuality(first)) ? second.routes : first.routes;
+    let result = first;
+    if (detours.size > 0) {
+      const second = new RouteGeometry(this.routeOnce(routable, detours), routable);
+      this.separate(second);
+      if (isBetter(measureQuality(second), measureQuality(first))) result = second;
+    }
+    centreThickestEdgesIn(result, this.options.edgeSpacing);
+    return result.routes;
   }
 
   /** Checkpoints for the edges that do not fit into crowded gaps; reads the geometry before it is separated. */

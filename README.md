@@ -97,7 +97,9 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 | `worker` | – | a `Worker` running `routing.worker.ts`, see below |
 
 Every edge attaches to one of four pins in the middle of the node sides; libavoid
-picks the side and spreads the edge ends apart along it.
+picks the side and spreads the edge ends apart along it. Where more than two
+edges end at one side, the thickest one ends at the centre of the side and the
+others fan out around it (this may add crossings right next to the node).
 
 ## Route quality
 
@@ -124,7 +126,7 @@ length on the bench graphs. On 128 nodes / 182 edges:
 | | overlapping strokes | crossings | length |
 |---|--:|--:|--:|
 | libavoid only | 61,940 px | 1310 | 140,154 |
-| now | **6,175 px** | 1348 | 146,516 |
+| now | **6,157 px** | 1355 | 146,612 |
 
 No edge runs through a node in any of them.
 

@@ -1,7 +1,7 @@
 // Post-processing of the routes libavoid returns. libavoid keeps a clearance
 // (shapeBufferDistance) around nodes and does not nudge segments into it, so
 // where many edges share a narrow gap between nodes it stacks them on the same
-// line. Three steps work on a RouteGeometry to deal with that:
+// line. These steps work on a RouteGeometry to deal with that:
 //
 // - findDetoursIn() (detour-finder.ts) finds gaps between nodes that more edges
 //   use than fit into them and picks checkpoints in wider gaps for the edges
@@ -13,6 +13,8 @@
 //   the middle of a side fan out along it. Moving a vertical segment sideways
 //   only stretches its horizontal neighbours (and vice versa), so routes stay
 //   orthogonal.
+// - centreThickestEdgesIn() (thickest-edge-centring.ts) moves the thickest edge on a node
+//   side with more than two edge ends to the centre of the side.
 // - measureQuality() (route-quality.ts) measures overlaps, crossings and
 //   length, to compare routings.
 

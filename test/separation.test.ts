@@ -228,3 +228,63 @@ test('steel plant: edges into the same node side fan out along it', () => {
   const ends = ['VSH-V4->CUST', 'VSH-U1->CUST', 'OV-Y->CUST'].map((id) => routes.get(id)!.at(-1)!);
   assert.equal(new Set(ends.map((end) => end.y)).size, 3, `ends: ${JSON.stringify(ends)}`);
 });
+
+/**
+ * A hub with edges to nodes above, beside and below it, all attached to its right
+ * side; `into[i]` makes edge i end at the hub instead of starting there.
+ */
+function hubModel(widths: number[], into: boolean[] = []): GraphModel {
+  const ys = [-150, 0, 150, 300].slice(0, widths.length);
+  return {
+    nodes: [
+      { id: 'hub', x: 0, y: 0, width: 80, height: 120 },
+      ...ys.map((y, i) => ({ id: `t${i}`, x: 300, y, width: 60, height: 40 })),
+    ],
+    edges: widths.map((width, i) =>
+      into[i]
+        ? { id: `e${i}`, source: `t${i}`, target: 'hub', width, targetSides: ['right'] }
+        : { id: `e${i}`, source: 'hub', target: `t${i}`, width, sourceSides: ['right'] },
+    ),
+  };
+}
+
+/** Where each edge of a hubModel() attaches to the hub. */
+const hubEnds = (model: GraphModel, routes: ReadonlyMap<string, readonly Point[]>): Map<string, Point> =>
+  new Map(
+    model.edges.map((edge) => {
+      const route = routes.get(edge.id)!;
+      return [edge.id, edge.source === 'hub' ? route[0]! : route.at(-1)!];
+    }),
+  );
+
+test('the thickest of three or more edges on a node side attaches at its centre, starting or ending there', () => {
+  for (const [widths, into] of [
+    [[8, 2, 3], []],
+    [[2, 3, 5, 8], []],
+    [
+      [8, 2, 3],
+      [true, true, true],
+    ],
+    [
+      [2, 8, 3, 5],
+      [true, false, true, false],
+    ],
+  ] as Array<[number[], boolean[]]>) {
+    const label = `widths ${widths.join(', ')}, into ${into.join(', ')}`;
+    const model = hubModel(widths, into);
+    const routes = new EdgeRouter(avoid).route(model);
+    const ends = hubEnds(model, routes);
+    const thickest = model.edges.reduce((a, b) => (b.width! > a.width! ? b : a));
+    assert.equal(ends.get(thickest.id)!.y, 0, label);
+    const ys = [...ends.values()].map((end) => end.y);
+    assert.equal(new Set(ys).size, ys.length, `${label}: ends stay apart: ${ys.join(', ')}`);
+    for (const route of routes.values()) assertOrthogonal(route);
+    assertNoNodeHits(model, routes);
+  }
+});
+
+test("two edges on a node side keep libavoid's fan", () => {
+  const model = hubModel([8, 2]);
+  const routes = new EdgeRouter(avoid).route(model);
+  assert.notEqual(hubEnds(model, routes).get('e0')!.y, 0);
+});

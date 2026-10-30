@@ -507,6 +507,14 @@ Knoten nicht überdecken. Wo libavoid sie trotzdem auf einer Linie lässt (etwa
 bei vielen Kanten in einen Knoten), fächert `separateOverlaps` sie entlang der
 Seite auf (siehe 10.4).
 
+libavoid ordnet die Enden einer Seite nach ihrer Richtung, die Mitte bekommt
+also die Kante, die geradeaus läuft. Enden an einer Seite mehr als zwei Kanten,
+setzt das Plugin zum Schluss stattdessen die **dickste** Kante genau in die
+Mitte der Seite; die übrigen behalten ihre Reihenfolge links und rechts davon.
+Das kann direkt am Knoten Kreuzungen erzeugen. Passt der neue Fächer nicht auf
+die Seite oder würde er Striche übereinanderlegen, bleibt die Seite, wie sie
+ist. Bei gleich dicken Kanten ändert sich nichts.
+
 ### 10.3 Darstellung in Cytoscape
 
 Cytoscape kennt keine absoluten Kantenpunkte. Das Plugin rechnet jede Route
@@ -564,7 +572,7 @@ Gemessen mit `npm run quality` auf dem Graphen M (128 Knoten, 182 Kanten):
 | | übereinanderliegende Striche | Kreuzungen | Länge |
 |---|--:|--:|--:|
 | nur libavoid | 61.940 px | 1310 | 140.154 |
-| jetzt | **6.175 px** | 1348 | 146.516 |
+| jetzt | **6.157 px** | 1355 | 146.612 |
 
 Keine Kante läuft durch einen Knoten. Die Umwege kosten einen zweiten
 libavoid-Lauf; während des Ziehens wird deshalb ohne sie geroutet (Entwurf),
@@ -827,6 +835,7 @@ Aufbau des Quellcodes (eine Klasse pro Datei, nach Aufgabe in Ordnern):
 | `postprocess/route-geometry.ts` | `RouteGeometry` | Routen in Segmente zerlegt, mit Index; gemeinsame Abfragen (Bündel, freie Intervalle, Hindernisse neben einem Segment). Wird pro libavoid-Lauf einmal gebaut. |
 | `postprocess/overlap-separator.ts` | – | `separateOverlapsIn(geometry)`: schiebt übereinanderliegende Segmente auseinander (siehe 10.4). |
 | `postprocess/detour-finder.ts` | – | `findDetoursIn(geometry)`: Umwege für überfüllte Lücken (siehe 10.4). |
+| `postprocess/thickest-edge-centring.ts` | – | `centreThickestEdgesIn(geometry)`: setzt die dickste von mehr als zwei Kanten an einer Knotenseite in deren Mitte (siehe 10.2). |
 | `postprocess/route-quality.ts` | – | `measureQuality(geometry)`: Überlappung, Kreuzungen und Länge, zum Vergleichen. |
 | `libavoid/load.ts` | – | Lädt die `.wasm` einmalig. |
 | `libavoid/api.ts` | – | Typen des genutzten Teils der libavoid-js-API. |
