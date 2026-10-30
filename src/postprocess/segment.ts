@@ -56,13 +56,16 @@ export class Segment {
         const axis = a.x === b.x ? 'x' : a.y === b.y ? 'y' : undefined;
         if (!axis) continue; // not orthogonal
         const segment = new Segment(edgeId, route, index, axis, edge?.width || 0);
-        const endNodes = [index === 0 && edge?.source, index + 1 === last && edge?.target];
-        endNodes.forEach((nodeId, i) => {
-          if (nodeId === false) return; // not an end segment on this side
+        const ends = [
+          { isEnd: index === 0, nodeId: edge?.source, point: 0 },
+          { isEnd: index + 1 === last, nodeId: edge?.target, point: last },
+        ];
+        for (const { isEnd, nodeId, point } of ends) {
+          if (!isEnd) continue;
           const node = nodeId === undefined ? undefined : nodes.get(nodeId);
-          if (node) segment.ends.push({ node, point: i === 0 ? 0 : last });
-          else segment.movable = false; // unknown node: leave the segment where it is
-        });
+          if (node) segment.ends.push({ node, point });
+          else segment.movable = false; // unknown edge or node: leave the segment where it is
+        }
         segment.movable &&= segment.ends.every((end) => segment.sideInterval(end) !== undefined);
         segments.push(segment);
       }
