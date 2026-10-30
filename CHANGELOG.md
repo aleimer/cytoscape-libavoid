@@ -83,11 +83,12 @@ Bench graph with 128 nodes / 182 edges (`npm run quality`):
 | | overlapping strokes | crossings |
 |---|--:|--:|
 | 0.1.0 (`ports: 'auto'`) | 61,940 px | 1310 |
-| now | 5,686 px | 1347 |
+| now | 5,757 px | 1347 |
 
 Where more than two edges end at one node side, the thickest one now ends at
-the centre of the side; the others keep their order around it. Sides where
-that would add crossings keep libavoid's order.
+the centre of the side; the others keep their order around it. Where that
+would add crossings, the others move to one side of it instead (demo:
+`?graph=tw`); sides where that adds crossings too keep libavoid's order.
 
 ### Performance
 

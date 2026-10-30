@@ -3,9 +3,10 @@
  * attach to, whether they start or end there. libavoid fans the edges out along
  * the side in the order of their directions, so the middle goes to whichever
  * edge runs straight ahead; this step reorders the fan so the thickest edge
- * attaches at the side's centre, the others keep their order around it. Sides
- * where that would add crossings, e.g. a thin edge pushed across thick edges
- * arriving from the same direction, keep libavoid's fan.
+ * attaches at the side's centre, the others keep their order around it. Where
+ * that would add crossings, e.g. a thin edge pushed across a thick edge turning
+ * towards it, the thickest still goes to the centre with more of the others on
+ * one side of it, if that adds none; otherwise the side keeps libavoid's fan.
  *
  * libavoid often puts the bends of an edge turning up and one turning down on
  * the same line, since they do not touch. Once the fan is reordered they can lie
@@ -41,7 +42,7 @@ interface SideEnd
  * Reorders the edges on every node side that at least MIN_ENDS of them start or
  * end at, so the thickest attaches at the centre of the side; changes `geometry`
  * in place. Sides whose ends are not fanned out, where even the squeezed fan
- * does not fit or where it would add crossings stay as they are. Separate overlaps afterwards, see the top of the file.
+ * does not fit or where every slot for the thickest adds crossings stay as they are. Separate overlaps afterwards, see the top of the file.
  *
  * @param spacing gap kept between neighbouring strokes (px)
  */
@@ -89,7 +90,7 @@ function sideOf(segment: Segment, { node, point }: SegmentEnd): Side
 
 /**
  * Moves the ends of one side so the thickest is at the centre, squeezed as little
- * as needed to fit, unless that adds crossings.
+ * as needed to fit, in the slot of the fan nearest its middle that adds no crossings.
  */
 function centreThickest(
   geometry: RouteGeometry,
@@ -118,21 +119,18 @@ function centreThickest(
   // the others keep their order; the thickest goes to the middle slot, on the side it came from
   const from = fan.indexOf(thickest);
   const middle = from < (fan.length - 1) / 2 ? Math.floor((fan.length - 1) / 2) : Math.ceil((fan.length - 1) / 2);
-  const order = fan.filter((segment) => segment !== thickest);
-  order.splice(middle, 0, thickest);
-
-  // libavoid's gaps where they are wide enough, otherwise the widths plus spacing
-  const gaps = fan.slice(1).map((segment, i) => segment.position - fan[i]!.position);
-  const pitches = order.slice(1).map((segment, i) =>
-  {
-    const needed = (order[i]!.width + segment.width) / 2 + spacing;
-    return Math.max(gaps[i]!, needed);
-  });
-  const freeIntervals = order.map((segment) => geometry.freeInterval(segment));
+  const others = fan.filter((segment) => segment !== thickest);
+  /**
+   * where the middle slot adds crossings, one further out may not: the others then
+   * lie more on one side, e.g. away from the direction the thickest turns to
+   */
+  const slots = fan
+    .map((_, slot) => slot)
+    .sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle) || Math.abs(a - from) - Math.abs(b - from));
 
   // moving an end segment stretches the next one of its route, which may then cross other edges
-  const affected = new Set(order);
-  for (const segment of order)
+  const affected = new Set(fan);
+  for (const segment of fan)
   {
     for (const next of segmentsByRoute.get(segment.route) ?? [])
     {
@@ -143,22 +141,57 @@ function centreThickest(
     }
   }
   const crossingsBefore = crossingsOf(geometry, affected);
-  const previous = order.map((segment) => segment.position);
+  const previous = fan.map((segment) => segment.position);
+  const gaps = fan.slice(1).map((segment, i) => segment.position - fan[i]!.position);
 
-  // the full fan if it fits, otherwise squeezed as little as possible
-  for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
+  for (const slot of slots)
   {
-    const positions = fanPositions(pitches, middle, centre, steps / SQUEEZE_STEPS);
-    if (freeIntervals.every(([low, high], i) => low <= positions[i]! && positions[i]! <= high))
+    const order = [...others];
+    order.splice(slot, 0, thickest);
+    const positions = fittingFan(geometry, order, gaps, slot, centre, spacing);
+    if (!positions)
     {
-      order.forEach((segment, i) => geometry.move(segment, positions[i]!));
-      if (crossingsOf(geometry, affected) > crossingsBefore)
-      {
-        order.forEach((segment, i) => geometry.move(segment, previous[i]!));
-      }
+      continue;
+    }
+    order.forEach((segment, i) => geometry.move(segment, positions[i]!));
+    if (crossingsOf(geometry, affected) <= crossingsBefore)
+    {
       return;
     }
+    fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
   }
+}
+
+/**
+ * Positions for the segments in `order` with slot `slot` at `centre`: libavoid's
+ * `gaps` where they are wide enough, otherwise the widths plus spacing; the full
+ * fan if it fits in the free intervals, otherwise squeezed as little as possible,
+ * undefined if even the most squeezed one does not fit.
+ */
+function fittingFan(
+  geometry: RouteGeometry,
+  order: readonly Segment[],
+  gaps: readonly number[],
+  slot: number,
+  centre: number,
+  spacing: number,
+): number[] | undefined
+{
+  const pitches = order.slice(1).map((segment, i) =>
+  {
+    const needed = (order[i]!.width + segment.width) / 2 + spacing;
+    return Math.max(gaps[i]!, needed);
+  });
+  const freeIntervals = order.map((segment) => geometry.freeInterval(segment));
+  for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
+  {
+    const positions = fanPositions(pitches, slot, centre, steps / SQUEEZE_STEPS);
+    if (freeIntervals.every(([low, high], i) => low <= positions[i]! && positions[i]! <= high))
+    {
+      return positions;
+    }
+  }
+  return undefined;
 }
 
 /** How often these segments cross segments of other edges. */

@@ -14,6 +14,7 @@ import {
   plantView,
 } from './plant-graph';
 import { SMALL_FLOWS, SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH, SMALL_NODE_SIZE, SMALL_NODES } from './small-graph';
+import { TW_FLOWS, TW_MAX_QUANTITY, TW_MAX_WIDTH, TW_NODE_SIZE, TW_NODES } from './tw-graph';
 
 cytoscape.use(cytoscapeLibavoid);
 
@@ -26,10 +27,18 @@ const smallElements: ElementDefinition[] = [
   ...SMALL_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}-${t}`, source: s, target: t, q } })),
 ];
 
+// ?graph=tw: the TW section of tw-graph.ts, thick edges centred next to thin ones
+const twElements: ElementDefinition[] = [
+  ...TW_NODES.map(([id, x, y]) => ({ data: { id, label: id }, position: { x, y }, classes: 'tw' })),
+  ...TW_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}->${t}`, source: s, target: t, q } })),
+];
+
 // ?graph=plant: the steel plant of plant-graph.ts, with many crowded gaps and
 // groups; a double click collapses or expands a group
 const params = new URLSearchParams(location.search);
-const plant = params.get('graph') === 'plant';
+const graph = params.get('graph');
+const plant = graph === 'plant';
+const tw = graph === 'tw';
 const collapsed = new Set<string>();
 /** Plant node positions, updated from the graph so a collapse keeps what was dragged. */
 const plantNodePositions = new Map(plantPositions().map(({ id, x, y }) => [id, { x, y }]));
@@ -49,8 +58,12 @@ function plantElements(): ElementDefinition[]
     ...view.edges.map(({ id, source, target, quantity }) => ({ data: { id, source, target, q: quantity } })),
   ];
 }
-const elements = plant ? plantElements() : smallElements;
-const [maxQuantity, maxWidth] = plant ? [PLANT_MAX_QUANTITY, PLANT_MAX_WIDTH] : [SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH];
+const elements = plant ? plantElements() : tw ? twElements : smallElements;
+const [maxQuantity, maxWidth] = plant ?
+  [PLANT_MAX_QUANTITY, PLANT_MAX_WIDTH] :
+  tw ?
+  [TW_MAX_QUANTITY, TW_MAX_WIDTH] :
+  [SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH];
 
 const cy = cytoscape({
   container: document.getElementById('cy'),
@@ -75,6 +88,7 @@ const cy = cytoscape({
       selector: 'node.plant',
       style: { width: DEFAULT_PLANT_SCALE.nodeWidth, height: DEFAULT_PLANT_SCALE.nodeHeight, 'font-size': 10 },
     },
+    { selector: 'node.tw', style: { shape: 'ellipse', ...TW_NODE_SIZE, 'font-size': 20 } },
     {
       selector: 'node.collapsed',
       style: { 'background-color': '#2f4d78', 'border-width': 2, 'border-color': '#1b2f4d' },
@@ -144,8 +158,11 @@ const reloadWith = (key: string, value: string | undefined): void =>
 };
 workerToggle.addEventListener('change', () => reloadWith('worker', workerToggle.checked ? '1' : undefined));
 const graphSelect = $<HTMLSelectElement>('graph');
-graphSelect.value = plant ? 'plant' : 'small';
-graphSelect.addEventListener('change', () => reloadWith('graph', graphSelect.value === 'plant' ? 'plant' : undefined));
+graphSelect.value = graph === 'plant' || graph === 'tw' ? graph : 'small';
+graphSelect.addEventListener(
+  'change',
+  () => reloadWith('graph', graphSelect.value === 'small' ? undefined : graphSelect.value),
+);
 const worker = useWorker ? new Worker('build/routing.worker.js', { type: 'module' }) : undefined;
 
 const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm', worker });

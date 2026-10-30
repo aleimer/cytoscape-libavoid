@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { COLLAPSIBLE_GROUPS, plantModel, plantView } from '../demo/plant-graph';
+import { twModel } from '../demo/tw-graph';
 import { EdgeRouter, loadLibavoid, routeQuality } from '../src';
 import type { Avoid, GraphModel, Point } from '../src';
 import { separateOverlaps } from '../src/postprocess/overlap-separator';
@@ -320,14 +321,26 @@ test('the thickest edge on a side with three or more edges moves to its centre, 
   }
 });
 
-test('the thickest edge stays off the centre where moving it there would add crossings', () =>
+test('where the middle slot adds crossings, the thickest edge goes to the centre with the others on one side', () =>
 {
-  // the thickest edge turns up; in the middle it would cross the thin edge running straight
+  // the thickest edge turns up; in the middle of the fan it would cross the thin edge running straight
   const hub = hubModel([8, 2, 3]);
   const hubRoutes = new EdgeRouter(avoid).route(hub);
-  assert.notEqual(hubEnds(hub, hubRoutes).get('e0')!.y, 0);
+  const ends = hubEnds(hub, hubRoutes);
+  assert.equal(ends.get('e0')!.y, 0);
+  assert.ok(ends.get('e1')!.y > 0 && ends.get('e2')!.y > ends.get('e1')!.y, `others below: ${[...ends.values()]}`);
   assert.equal(routeQuality(hubRoutes, hub).crossings, 0);
 
+  // from a screenshot: the thick WBB edges arrive where the thin TW-FL <-> TW-D edges leave
+  const tw = twModel();
+  const twRoutes = new EdgeRouter(avoid).route(tw);
+  assert.equal(twRoutes.get('WBB->TW-FL')!.at(-1)!.x, 600, 'thick edge at the centre of TW-FL');
+  assert.equal(twRoutes.get('WBB->TW-D')!.at(-1)!.x, 600, 'thick edge at the centre of TW-D');
+  assert.equal(routeQuality(twRoutes, tw).crossings, 0);
+});
+
+test('centring the thickest edge pushes no thin edge across thick ones', () =>
+{
   // from a screenshot: centring the thick WBB edges pushed a thin edge across both of them
   const plant: GraphModel = {
     nodes: [
