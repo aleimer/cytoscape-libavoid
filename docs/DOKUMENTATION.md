@@ -418,7 +418,8 @@ routes.get('ab');
 ```
 
 Ein `EdgeRouter` kann beliebig oft `route()` aufrufen; seine Optionen stehen
-in `router.options`.
+in `router.options`. Die Reihenfolge der Knoten und Kanten im Modell ändert die
+Routen nicht: `route()` gibt sie libavoid nach ihren Ids sortiert.
 
 **Modell**
 
@@ -511,8 +512,10 @@ libavoid ordnet die Enden einer Seite nach ihrer Richtung, die Mitte bekommt
 also die Kante, die geradeaus läuft. Enden an einer Seite mehr als zwei Kanten,
 setzt das Plugin zum Schluss stattdessen die **dickste** Kante genau in die
 Mitte der Seite; die übrigen behalten ihre Reihenfolge links und rechts davon.
-Würde das neue Kreuzungen erzeugen (etwa eine dünne Kante quer über dicke
-schieben, die aus derselben Richtung kommen), bleibt libavoids Reihenfolge;
+Würde das neue Kreuzungen oder Überdeckungen erzeugen (etwa eine dünne Kante
+quer über dicke schieben, die aus derselben Richtung kommen, oder eine dünne
+Kante zwischen zwei Knoten am anderen Knoten in eine dickere hineinschieben),
+bleibt libavoids Reihenfolge;
 auf den Bench-Graphen gilt das für etwa die Hälfte der Seiten. Passt der Fächer nicht auf die
 Seite, wird er enger zusammengeschoben; passt er auch dann nicht, bleibt die
 Seite, wie sie ist. Knicke, die dadurch direkt am Knoten übereinanderliegen,

@@ -17,10 +17,10 @@ export const TW_NODES: ReadonlyArray<[id: string, x: number, y: number]> = [
 ];
 
 export const TW_FLOWS: ReadonlyArray<[source: string, target: string, quantity: number]> = [
-  ['WBB', 'TW-FL', 1233],
-  ['WBB', 'TW-D', 2047],
   ['TW-FL', 'TW-D', 40],
   ['TW-D', 'TW-FL', 90],
+  ['WBB', 'TW-FL', 1233],
+  ['WBB', 'TW-D', 2047],
   ['TW-FL', 'KW-X', 1615],
   ['TW-D', 'KW-X', 793],
   ['KW-X', 'KB2', 2283],

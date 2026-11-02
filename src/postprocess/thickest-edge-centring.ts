@@ -7,6 +7,8 @@
  * that would add crossings, e.g. a thin edge pushed across a thick edge turning
  * towards it, the thickest still goes to the centre with more of the others on
  * one side of it, if that adds none; otherwise the side keeps libavoid's fan.
+ * The same goes for overlaps, e.g. a thin edge between two nodes packed around
+ * the thickest edge of one node's side reaching into a thicker one at the other.
  *
  * libavoid often puts the bends of an edge turning up and one turning down on
  * the same line, since they do not touch. Once the fan is reordered they can lie
@@ -141,24 +143,59 @@ function centreThickest(
     }
   }
   const crossingsBefore = crossingsOf(geometry, affected);
+  const overlapBefore = overlapOf(geometry, fan);
   const previous = fan.map((segment) => segment.position);
 
   for (const slot of slots)
   {
     const order = [...others];
     order.splice(slot, 0, thickest);
-    const positions = fittingFan(geometry, order, slot, centre, spacing);
-    if (!positions)
+    const packed = fittingFan(geometry, order, slot, centre, spacing);
+    if (!packed)
     {
       continue;
     }
-    order.forEach((segment, i) => geometry.move(segment, positions[i]!));
-    if (crossingsOf(geometry, affected) <= crossingsBefore)
+    const loose = loosenedFan(order, slot, packed);
+    for (const positions of fits(geometry, order, loose) ? [packed, loose] : [packed])
     {
-      return;
+      order.forEach((segment, i) => geometry.move(segment, positions[i]!));
+      if (crossingsOf(geometry, affected) <= crossingsBefore && overlapOf(geometry, fan) <= overlapBefore)
+      {
+        return;
+      }
+      fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
     }
-    fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
   }
+}
+
+/**
+ * The packed fan, but segments already further out than their packed position
+ * stay there, and so do the ones beyond them. A segment between two nodes is on
+ * a side of each; packed around this side's thickest edge it may reach into a
+ * thicker one at the other node, where it is already packed.
+ */
+function loosenedFan(order: readonly Segment[], slot: number, packed: readonly number[]): number[]
+{
+  const loose = [...packed];
+  for (let i = slot + 1; i < order.length; i++)
+  {
+    loose[i] = Math.max(loose[i - 1]! + packed[i]! - packed[i - 1]!, order[i]!.position);
+  }
+  for (let i = slot - 1; i >= 0; i--)
+  {
+    loose[i] = Math.min(loose[i + 1]! - (packed[i + 1]! - packed[i]!), order[i]!.position);
+  }
+  return loose;
+}
+
+/** True if every segment of `order` may move to its position. */
+function fits(geometry: RouteGeometry, order: readonly Segment[], positions: readonly number[]): boolean
+{
+  return order.every((segment, i) =>
+  {
+    const [low, high] = geometry.freeInterval(segment);
+    return low <= positions[i]! && positions[i]! <= high;
+  });
 }
 
 /**
@@ -177,11 +214,10 @@ function fittingFan(
 ): number[] | undefined
 {
   const pitches = order.slice(1).map((segment, i) => (order[i]!.width + segment.width) / 2 + spacing);
-  const freeIntervals = order.map((segment) => geometry.freeInterval(segment));
   for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
   {
     const positions = fanPositions(pitches, slot, centre, steps / SQUEEZE_STEPS);
-    if (freeIntervals.every(([low, high], i) => low <= positions[i]! && positions[i]! <= high))
+    if (fits(geometry, order, positions))
     {
       return positions;
     }
@@ -205,6 +241,20 @@ function crossingsOf(geometry: RouteGeometry, segments: ReadonlySet<Segment>): n
     }
   }
   return crossings;
+}
+
+/** Length along which these segments overlap segments of other edges. */
+function overlapOf(geometry: RouteGeometry, segments: readonly Segment[]): number
+{
+  let overlap = 0;
+  for (const segment of segments)
+  {
+    for (const near of geometry.overlapping(segment))
+    {
+      overlap += segment.overlapLength(near);
+    }
+  }
+  return overlap;
 }
 
 /** Positions of a fan with these gaps between neighbours, scaled by `squeeze`, with slot `middle` at `centre`. */

@@ -63,13 +63,16 @@ export class EdgeRouter
    * second time through checkpoints in wider gaps and keeps whichever result is
    * better (see isBetter()). Finally the thickest edge on a node side with more
    * than two edges moves to its centre, and the overlaps that causes are spread
-   * apart again. Loops and edges with a missing end are skipped.
+   * apart again. Loops and edges with a missing end are skipped. Nodes and edges
+   * are routed in the order of their ids: libavoid's results and the order the
+   * post-processing steps visit node sides in depend on the input order, which
+   * should not change the routes.
    *
    * @returns edge id -> route points, from the source end to the target end
    */
   route(model: GraphModel): Map<string, Point[]>
   {
-    const routable: GraphModel = { nodes: model.nodes, edges: routableEdges(model) };
+    const routable: GraphModel = { nodes: byId(model.nodes), edges: byId(routableEdges(model)) };
     const first = new RouteGeometry(this.routeOnce(routable), routable);
     const detours = this.options.detourCrowded ? this.findDetours(first) : new Map<string, Point>();
     this.separate(first);
@@ -244,6 +247,12 @@ function pinClass(sides: readonly Side[] | undefined): number
 {
   const allowed = sides?.length ? sides : SIDES;
   return allowed.reduce((bits, side) => bits | (SIDE_BIT[side] ?? 0), 0) || pinClass(undefined);
+}
+
+/** A copy sorted by id, see route(). */
+function byId<T extends { id: string; }>(items: readonly T[]): T[]
+{
+  return [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 /**

@@ -349,6 +349,22 @@ test('where the middle slot adds crossings, the thickest edge goes to the centre
   }
 });
 
+test('the order of nodes and edges does not change the routes', () =>
+{
+  // from the demo: with the WBB edges after the thin TW-FL <-> TW-D ones, the thin edges
+  // were packed around WBB->TW-FL at TW-FL and reached into the thicker WBB->TW-D at TW-D
+  for (const [label, model] of [['tw', twModel()], ['plant', plantModel()]] as const)
+  {
+    const routes = new EdgeRouter(avoid).route(model);
+    const reversed = new EdgeRouter(avoid).route({
+      nodes: [...model.nodes].reverse(),
+      edges: [...model.edges].reverse(),
+    });
+    assert.deepEqual(reversed, routes, label);
+  }
+  assert.equal(routeQuality(new EdgeRouter(avoid).route(twModel()), twModel()).overlap, 0);
+});
+
 test('centring the thickest edge pushes no thin edge across thick ones', () =>
 {
   // from a screenshot: centring the thick WBB edges pushed a thin edge across both of them
