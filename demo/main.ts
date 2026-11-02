@@ -5,6 +5,7 @@ import type { EdgeSingular, ElementDefinition } from 'cytoscape';
 import cytoscapeLibavoid from '../src';
 import type { LibavoidOptions, RoutedEventInfo } from '../src';
 import { flowLabel, flowWidth } from './flow-width';
+import { openOptionsDialog } from './options-dialog';
 import {
   DEFAULT_PLANT_SCALE,
   isCollapsible,
@@ -88,7 +89,7 @@ const cy = cytoscape({
       selector: 'node.plant',
       style: { width: DEFAULT_PLANT_SCALE.nodeWidth, height: DEFAULT_PLANT_SCALE.nodeHeight, 'font-size': 10 },
     },
-    { selector: 'node.tw', style: { shape: 'ellipse', ...TW_NODE_SIZE, 'font-size': 20 } },
+    { selector: 'node.tw', style: { shape: 'rectangle', ...TW_NODE_SIZE, 'font-size': 20 } },
     {
       selector: 'node.collapsed',
       style: { 'background-color': '#2f4d78', 'border-width': 2, 'border-color': '#1b2f4d' },
@@ -165,10 +166,21 @@ graphSelect.addEventListener(
 );
 const worker = useWorker ? new Worker('build/routing.worker.js', { type: 'module' }) : undefined;
 
-const routing = cy.libavoid({ ...read(), wasmUrl: 'build/libavoid.wasm', worker });
+const passed: Partial<LibavoidOptions> = { ...read(), wasmUrl: 'build/libavoid.wasm', worker };
+const routing = cy.libavoid(passed);
 // for trying things out in the browser console
 Object.assign(window, { demo: { cy, routing } });
-routing.ready.catch((err: Error) => (stats.textContent = 'Fehler: ' + err.message));
+let loadState = 'lädt …';
+routing.ready.then(
+  () => (loadState = 'bereit'),
+  (err: Error) => (stats.textContent = loadState = 'Fehler: ' + err.message),
+);
+$('showOptions').addEventListener('click', () =>
+  openOptionsDialog(routing, {
+    passed,
+    sourceOf: worker ? { worker: "new Worker('build/routing.worker.js', { type: 'module' })" } : {},
+    loadState: () => `${worker ? 'im Web Worker' : 'im Hauptthread'} · ${passed.wasmUrl} · ${loadState}`,
+  }));
 cy.on('avoidrouted', (_evt, info: RoutedEventInfo) =>
 {
   stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${

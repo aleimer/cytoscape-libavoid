@@ -16,16 +16,23 @@
         background: #fafafa;
         color: #222;
       }
+      /* the header grows to as many lines as it wraps to, the graph takes the rest */
+      body {
+        display: flex;
+        flex-direction: column;
+      }
       #cy {
-        position: absolute;
-        inset: 48px 0 0 0;
+        position: relative;
+        flex: 1;
+        min-height: 0;
       }
       header {
-        height: 48px;
+        min-height: 48px;
         display: flex;
-        gap: 16px;
+        gap: 6px 16px;
         align-items: center;
-        padding: 0 16px;
+        padding: 6px 16px;
+        box-sizing: border-box;
         border-bottom: 1px solid #ddd;
         background: #fff;
         flex-wrap: wrap;
@@ -39,6 +46,63 @@
         margin-left: auto;
         color: #666;
         font-variant-numeric: tabular-nums;
+      }
+      #optionsDialog {
+        width: min(860px, 90vw);
+        max-height: 85vh;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 16px 20px;
+      }
+      #optionsDialog::backdrop {
+        background: rgb(0 0 0 / 30%);
+      }
+      #optionsDialog h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      #optionsDialog h3 {
+        margin: 16px 0 6px;
+        font-size: 14px;
+      }
+      #optionsDialog small {
+        font-weight: normal;
+        color: #666;
+      }
+      #optionsDialog pre,
+      #optionsDialog td {
+        font:
+          12px ui-monospace,
+          monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      #optionsDialog pre {
+        margin: 0;
+        padding: 8px 10px;
+        background: #f3f3f3;
+        border-radius: 4px;
+      }
+      #optionsDialog table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      #optionsDialog th {
+        text-align: left;
+        border-bottom: 1px solid #ccc;
+      }
+      #optionsDialog td {
+        padding: 3px 8px 3px 0;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+      }
+      #optionsDialog tr.changed td {
+        background: #fff3d6;
+        font-weight: 600;
+      }
+      #optionsDialog form > button {
+        margin-top: 16px;
+        float: right;
       }
     </style>
   </head>
@@ -67,9 +131,30 @@
       <label title="Routing in einem Web Worker (lädt die Seite neu)"
         ><input id="worker" type="checkbox" /> Worker</label
       >
+      <button id="showOptions" type="button" title="Wie das Plugin geladen wurde und welche Optionen gelten">
+        Plugin-Optionen
+      </button>
       <span id="stats"></span>
     </header>
     <div id="cy"></div>
+
+    <dialog id="optionsDialog">
+      <form method="dialog">
+        <h2>Plugin-Optionen</h2>
+        <h3>libavoid geladen</h3>
+        <p id="optionsLoad"></p>
+        <h3>Aufruf in demo/main.ts</h3>
+        <pre id="optionsCall"></pre>
+        <h3>Optionen in Gebrauch <small>(hervorgehoben: abweichend vom Default)</small></h3>
+        <table>
+          <thead>
+            <tr><th>Option</th><th>Wert</th><th>Default</th></tr>
+          </thead>
+          <tbody id="optionsRows"></tbody>
+        </table>
+        <button>Schließen</button>
+      </form>
+    </dialog>
 
     <!-- built from main.ts by `npm run build:demo` -->
     <script type="module" src="build/main.js"></script>

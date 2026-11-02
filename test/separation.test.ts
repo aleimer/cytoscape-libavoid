@@ -337,6 +337,16 @@ test('where the middle slot adds crossings, the thickest edge goes to the centre
   assert.equal(twRoutes.get('WBB->TW-FL')!.at(-1)!.x, 600, 'thick edge at the centre of TW-FL');
   assert.equal(twRoutes.get('WBB->TW-D')!.at(-1)!.x, 600, 'thick edge at the centre of TW-D');
   assert.equal(routeQuality(twRoutes, tw).crossings, 0);
+  // and the thin edges right next to them, not spread over the side as libavoid has them
+  const strokes = ['WBB->TW-D', 'TW-FL->TW-D', 'TW-D->TW-FL'].map((id) => ({
+    x: twRoutes.get(id)!.at(-1)!.x,
+    width: tw.edges.find((edge) => edge.id === id)!.width!,
+  }));
+  for (const [a, b] of [[strokes[0]!, strokes[1]!], [strokes[1]!, strokes[2]!]] as const)
+  {
+    const gap = Math.abs(b.x - a.x) - (a.width + b.width) / 2;
+    assert.ok(gap <= 3, `gap between neighbouring strokes: ${gap} px`);
+  }
 });
 
 test('centring the thickest edge pushes no thin edge across thick ones', () =>

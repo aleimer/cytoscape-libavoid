@@ -26,7 +26,7 @@ import type { Segment, SegmentEnd } from './segment';
 const MIN_ENDS = 3;
 /**
  * A fan that does not fit on the side is squeezed in steps of 1/SQUEEZE_STEPS
- * of its gaps, down to MIN_SQUEEZE_STEPS of them; below that the side stays as it is.
+ * of its pitches, down to MIN_SQUEEZE_STEPS of them; below that the side stays as it is.
  */
 const SQUEEZE_STEPS = 10;
 const MIN_SQUEEZE_STEPS = 2;
@@ -142,13 +142,12 @@ function centreThickest(
   }
   const crossingsBefore = crossingsOf(geometry, affected);
   const previous = fan.map((segment) => segment.position);
-  const gaps = fan.slice(1).map((segment, i) => segment.position - fan[i]!.position);
 
   for (const slot of slots)
   {
     const order = [...others];
     order.splice(slot, 0, thickest);
-    const positions = fittingFan(geometry, order, gaps, slot, centre, spacing);
+    const positions = fittingFan(geometry, order, slot, centre, spacing);
     if (!positions)
     {
       continue;
@@ -163,25 +162,21 @@ function centreThickest(
 }
 
 /**
- * Positions for the segments in `order` with slot `slot` at `centre`: libavoid's
- * `gaps` where they are wide enough, otherwise the widths plus spacing; the full
- * fan if it fits in the free intervals, otherwise squeezed as little as possible,
- * undefined if even the most squeezed one does not fit.
+ * Positions for the segments in `order` with slot `slot` at `centre`, packed:
+ * neighbouring strokes `spacing` apart. libavoid's gaps would spread the fan over
+ * the whole side and leave the thickest far from the others once it moved. The
+ * full fan if it fits in the free intervals, otherwise squeezed as little as
+ * possible, undefined if even the most squeezed one does not fit.
  */
 function fittingFan(
   geometry: RouteGeometry,
   order: readonly Segment[],
-  gaps: readonly number[],
   slot: number,
   centre: number,
   spacing: number,
 ): number[] | undefined
 {
-  const pitches = order.slice(1).map((segment, i) =>
-  {
-    const needed = (order[i]!.width + segment.width) / 2 + spacing;
-    return Math.max(gaps[i]!, needed);
-  });
+  const pitches = order.slice(1).map((segment, i) => (order[i]!.width + segment.width) / 2 + spacing);
   const freeIntervals = order.map((segment) => geometry.freeInterval(segment));
   for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
   {
