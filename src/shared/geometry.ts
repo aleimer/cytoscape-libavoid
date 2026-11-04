@@ -6,7 +6,9 @@
 /** A position in model coordinates, as Cytoscape's: y grows downwards. */
 export interface Point
 {
+  /** Horizontal coordinate, growing to the right. */
   x: number;
+  /** Vertical coordinate, growing downwards. */
   y: number;
 }
 
@@ -17,31 +19,54 @@ export interface Rect
   x: number;
   /** Centre y. */
   y: number;
+  /** Full width, from the left to the right side. */
   width: number;
+  /** Full height, from the top to the bottom side. */
   height: number;
 }
 
 /** A side of a rectangle; `top` is the one with the smaller y. */
 export type Side = 'top' | 'right' | 'bottom' | 'left';
 
+/** All four sides, clockwise from the top. */
 export const SIDES: readonly Side[] = ['top', 'right', 'bottom', 'left'];
 
-/** For values from outside, e.g. the `edgeSides` option. */
+/**
+ * Whether a value from outside, e.g. from the `edgeSides` option, is a {@link Side}.
+ *
+ * @param value any value
+ * @returns true if it is one of {@link SIDES}
+ */
 export const isSide = (value: unknown): value is Side => SIDES.includes(value as Side);
 
-/**
- * A coordinate axis. Post-processing names a segment's axis by the coordinate it
- * can be moved along: x for a vertical segment, y for a horizontal one.
- */
+/** A coordinate axis. */
 export type Axis = 'x' | 'y';
 
-/** y for x and x for y, e.g. the direction a run extends in from the axis it moves along. */
+/**
+ * The perpendicular axis, e.g. the one a segment extends along when it moves along `axis`.
+ *
+ * @param axis x or y
+ * @returns y for x and x for y
+ */
 export const otherAxis = (axis: Axis): Axis => (axis === 'x' ? 'y' : 'x');
 
-/** Half the size of a rectangle on an axis. */
+/**
+ * Half the size of a rectangle on an axis.
+ *
+ * @param rect the rectangle
+ * @param axis x for half the width, y for half the height
+ * @returns the distance from the centre to the sides on that axis
+ */
 export const halfSize = (rect: Rect, axis: Axis): number => (axis === 'x' ? rect.width : rect.height) / 2;
 
-/** From where to where a rectangle reaches on an axis, grown by `margin` on both sides. */
+/**
+ * From where to where a rectangle reaches on an axis.
+ *
+ * @param rect   the rectangle
+ * @param axis   the axis to measure on
+ * @param margin added on both sides; negative values shrink the extent
+ * @returns the lowest and the highest coordinate on `axis`
+ */
 export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high: number]
 {
   const reach = halfSize(rect, axis) + margin;
@@ -49,9 +74,14 @@ export function extentOf(rect: Rect, axis: Axis, margin = 0): [low: number, high
 }
 
 /**
- * Of the `allowed` sides of `rect`, the one that faces `towards` most. Distances
- * count in half sizes, so a wide rectangle uses its top or bottom side unless the
- * point is clearly beside it. Ties go to the side listed first in `allowed`.
+ * The side of a rectangle that faces a point most. Distances count in half
+ * sizes, so a wide rectangle uses its top or bottom side unless the point is
+ * clearly beside it.
+ *
+ * @param rect    the rectangle
+ * @param towards the point to face
+ * @param allowed the sides to choose from; ties go to the one listed first
+ * @returns one of `allowed`
  */
 export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] = SIDES): Side
 {
@@ -61,8 +91,14 @@ export function sideFacing(rect: Rect, towards: Point, allowed: readonly Side[] 
   return allowed.reduce((best, side) => (facing[side] > facing[best] ? side : best));
 }
 
-/** The middle of one side of `rect`. */
-export function sideMiddle(rect: Rect, side: Side): Point
+/**
+ * The centre of one side of a rectangle.
+ *
+ * @param rect the rectangle
+ * @param side which side
+ * @returns the point on the border, halfway along that side
+ */
+export function sideCentre(rect: Rect, side: Side): Point
 {
   const dx = side === 'left' ? -rect.width / 2 : side === 'right' ? rect.width / 2 : 0;
   const dy = side === 'top' ? -rect.height / 2 : side === 'bottom' ? rect.height / 2 : 0;

@@ -2,6 +2,7 @@
 import cytoscape from 'cytoscape';
 import type { Core, ElementDefinition, NodeSingular } from 'cytoscape';
 import type { GraphNode, Point, RoutingWorker } from '../src';
+import type { EdgeSegmentStyle } from '../src/cytoscape-adapter/route-style';
 import { answerRouteRequest } from '../src/worker/answer-route-request';
 import type { RouteRequest, RouteResponse } from '../src/worker/messages';
 
@@ -159,4 +160,32 @@ export class InProcessWorker implements RoutingWorker
       this.errorListeners.delete(listener as ErrorListener);
     }
   }
+}
+
+/**
+ * Where Cytoscape draws an edge with this `segments` style: the absolute points of
+ * the line, from the source end to the target end. The inverse of segmentStyleFor(),
+ * to check that the style draws the route it was made from.
+ */
+export function pointsDrawnBy(
+  style: Pick<EdgeSegmentStyle, 'source-endpoint' | 'target-endpoint' | 'segment-weights' | 'segment-distances'>,
+  sourceCentre: Point,
+  targetCentre: Point,
+): Point[]
+{
+  const numbers = (value: string): number[] => value.split(/\s+/).map(parseFloat);
+  const [startX = 0, startY = 0] = numbers(style['source-endpoint']);
+  const [endX = 0, endY = 0] = numbers(style['target-endpoint']);
+  const start = { x: sourceCentre.x + startX, y: sourceCentre.y + startY };
+  const end = { x: targetCentre.x + endX, y: targetCentre.y + endY };
+  const along = { x: end.x - start.x, y: end.y - start.y };
+  const length = Math.hypot(along.x, along.y);
+  const normal = { x: -along.y / length, y: along.x / length };
+  const distances = numbers(style['segment-distances']);
+  const segmentPoints = numbers(style['segment-weights']).map((weight, i) =>
+  {
+    const distance = distances[i] ?? 0;
+    return { x: start.x + weight * along.x + distance * normal.x, y: start.y + weight * along.y + distance * normal.y };
+  });
+  return [start, ...segmentPoints, end];
 }

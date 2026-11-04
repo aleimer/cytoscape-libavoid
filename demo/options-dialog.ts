@@ -1,7 +1,7 @@
 // The demo's "Plugin-Optionen" popup: how libavoid was loaded, the
 // cy.libavoid() call of main.ts and the options in use, those that differ from
-// DEFAULTS highlighted. Values go into the page as text, never as HTML.
-import { DEFAULTS } from '../src';
+// DEFAULT_OPTIONS highlighted. Values go into the page as text, never as HTML.
+import { DEFAULT_OPTIONS } from '../src';
 import type { LibavoidOptions, LibavoidRouting } from '../src';
 
 /** What the popup shows besides the options in use. */
@@ -60,8 +60,8 @@ export function openOptionsDialog(routing: LibavoidRouting, source: OptionsDialo
   $('optionsCall').textContent = callSource(source);
 
   const options = routing.options;
-  const defaults: Partial<Record<string, unknown>> = DEFAULTS;
-  const names = [...new Set([...Object.keys(DEFAULTS), ...Object.keys(options)])];
+  const defaults: Partial<Record<string, unknown>> = DEFAULT_OPTIONS;
+  const names = [...new Set([...Object.keys(DEFAULT_OPTIONS), ...Object.keys(options)])];
   $('optionsRows').replaceChildren(
     ...names.map((name) =>
     {

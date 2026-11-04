@@ -7,7 +7,12 @@ import { loadLibavoid } from '../libavoid/load';
 import { LocalRouter } from '../routing/local-router';
 import type { RouteRequest, RouteResponse } from './messages';
 
-/** Routes one request, loading libavoid on first use. Runs inside routing.worker.ts. */
+/**
+ * Routes one request, loading libavoid on first use. Runs inside routing.worker.ts.
+ *
+ * @param request the plugin's message, see {@link RouteRequest}
+ * @returns the answer with the same id; a failure becomes an error answer, it never rejects
+ */
 export async function answerRouteRequest(request: RouteRequest): Promise<RouteResponse>
 {
   try

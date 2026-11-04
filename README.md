@@ -31,7 +31,7 @@ toolchain:
 | `shared/` | `Point`, `Side`, `GraphModel` | the base used by all folders: geometry, the plain graph model routing works on, plugin messages and option checks |
 | `cytoscape-adapter/` | `LibavoidRouting` | the only folder that knows Cytoscape: `cy.libavoid()`, options, live re-routing, converting routes to edge styles |
 | `routing/` | `EdgeRouter`, `RoutingBackend` | routing logic, independent of Cytoscape; `LocalRouter` routes in this thread |
-| `postprocess/` | `routeQuality` | spreads apart overlapping edges, finds detours for crowded gaps, measures route quality, all on one `RouteGeometry` |
+| `postprocess/` | `measureRoutes` | spreads apart overlapping edges, finds detours around crowded areas, centres the widest edge on crowded node sides, measures route quality, all on one `RouteGeometry` |
 | `libavoid/` | `loadLibavoid` | libavoid connector: loads the WebAssembly module, wraps its API and memory handling; stand-in typings for libavoid-js |
 | `worker/` | `WorkerRouter` | routing in a Web Worker: messages and the plugin's side |
 
@@ -67,7 +67,7 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 - **Browser**: serve `node_modules/libavoid-js/dist/libavoid.wasm` as a static
   asset and pass its URL as `wasmUrl`.
 - **Node.js**: works without options.
-- Already loaded libavoid elsewhere? Pass the instance as `avoidLib`.
+- Already loaded libavoid elsewhere? Pass the instance as `libavoid`.
 
 ## Options
 
@@ -75,10 +75,10 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 |---|---|---|
 | `edgeSpacing` | `2` | gap between neighbouring parallel edges (px) |
 | `shapeBufferDistance` | `12` | clearance kept around nodes (px) |
-| `idealNudgingDistance` | `'auto'` | distance between parallel segments; auto = max edge width + `edgeSpacing` |
-| `nudgeConnectedSegments` | `true` | spread apart edge ends that share the pin in the middle of a node side |
+| `idealNudgingDistance` | `'auto'` | distance between parallel segments; auto = max edge width + `edgeSpacing`, at least 4 |
+| `nudgeConnectedSegments` | `true` | spread apart edge ends that share the pin in the centre of a node side |
 | `separateOverlaps` | `true` | spread apart edges that libavoid leaves on top of each other |
-| `detourCrowded` | `true` | route edges that do not fit into a narrow gap through a wider one (second libavoid run) |
+| `detourCrowdedAreas` | `true` | route edges that do not fit into a narrow gap through a wider one (second libavoid run) |
 | `cornerRadius` | `0` | > 0 renders rounded corners |
 | `labelPosition` | `'middle'` | `'longest-segment'`: edge labels on the centre of the longest segment (replaces `text-margin-x/y`) |
 | `edges` | `'edge'` | selector of edges to route |
@@ -88,19 +88,22 @@ libavoid needs `libavoid.wasm` (~480 kB) at runtime.
 | `edgeSides` | – | allowed sides per edge end, e.g. `e => ({ source: 'right', target: 'left' })`; default: libavoid picks any side |
 | `live` | `true` | re-route automatically on graph changes |
 | `rerouteOnDrag` | `true` | when live: re-route while dragging (`false` = on release only) |
-| `dragRouteInterval` | `'auto'` | pause between re-routes while dragging (ms); `'auto'` = as long as the last run took, `0` = every frame |
+| `dragRouteInterval` | `'auto'` | pause between re-routes while dragging (ms); `'auto'` = as long as the last run kept the main thread busy (no pause with a `worker`), `0` = every frame |
 | `dragRouteDelay` | `0` | while dragging, re-route only once the nodes have rested this long (ms); `0` = off |
 | `hideEdgesOnDrag` | `false` | hide the edges of dragged nodes until they are routed for the new position |
-| `routingParameters` | `{}` | raw libavoid `RoutingParameter`s, e.g. `{ crossingPenalty: 200 }` |
-| `routingOptions` | `{}` | raw libavoid `RoutingOption`s |
-| `wasmUrl` / `avoidLib` | – | see above |
+| `routingParameters` | `{}` | raw libavoid `RoutingParameter`s, passed through unchanged, e.g. `{ crossingPenalty: 200 }` |
+| `routingOptions` | `{}` | raw libavoid `RoutingOption`s (on / off), passed through unchanged |
+| `wasmUrl` / `libavoid` | – | see above |
 | `worker` | – | a `Worker` running `routing.worker.ts`, see below |
 
-Every edge attaches to one of four pins in the middle of the node sides; libavoid
+Every edge attaches to one of four pins in the centre of the node sides; libavoid
 picks the side and spreads the edge ends apart along it. Where more than two
-edges end at one side, the thickest one ends at the centre of the side and the
-others fan out around it, unless that would add crossings (e.g. push a thin edge
-across thick ones arriving from the same direction); then libavoid's order stays.
+edges end at one side, the widest one ends at the centre of the side and the
+others fan out around it, packed and in their order. Where that would add
+crossings or overlaps (e.g. push a thin edge across wide ones arriving from the
+same direction), the others move more to one side of it; if that does not help
+either, libavoid's order stays. The result does not depend on the order of the
+nodes and edges in the graph.
 
 ## Route quality
 
@@ -109,7 +112,7 @@ nudge edges into it. Where many edges share a narrow gap between nodes, e.g.
 between the columns of a group, it puts them on the same line. Two steps after
 the libavoid run fix that:
 
-1. `detourCrowded`: gaps used by more edges than fit keep the short, local
+1. `detourCrowdedAreas`: gaps used by more edges than fit keep the short, local
    edges; the ones passing through over the longest distance (at most 30 % of
    all edges) are routed again through the nearest wide gap, via checkpoints.
    The result is only kept if it clearly overlaps less without much more
@@ -118,7 +121,7 @@ the libavoid run fix that:
    their widths plus `edgeSpacing`, inside the gap (using part of the
    clearance if needed), never into a node. The first and last segment of a
    route only slide along the node side they end at, so edges that share the
-   pin in the middle of a side fan out along it instead of ending on one line.
+   pin in the centre of a side fan out along it instead of ending on one line.
    If a side is too short for all its edges, they are squeezed together.
 
 `npm run quality` measures overlaps, edges through nodes, crossings, bends and
@@ -126,8 +129,8 @@ length on the bench graphs. On 128 nodes / 182 edges:
 
 | | overlapping strokes | crossings | length |
 |---|--:|--:|--:|
-| libavoid only | 61,940 px | 1310 | 140,154 |
-| now | **5,686 px** | 1347 | 146,523 |
+| without both steps | 63,439 px | 1297 | 140,523 |
+| default | **6,286 px** | 1369 | 147,150 |
 
 No edge runs through a node in any of them.
 
@@ -136,16 +139,17 @@ No edge runs through a node in any of them.
 Every run routes the whole graph. Time per run in Node.js (`npm run perf`, the
 material-flow graphs of the Angular bench):
 
-| Graph | libavoid only | default (incl. detours) |
+| Graph | without separation and detours | default |
 |---|--:|--:|
-| 45 nodes, 53 edges | ~6 ms | ~12 ms |
-| 128 nodes, 182 edges | ~49 ms | ~130 ms |
-| 300 nodes, 488 edges | ~480 ms | ~1230 ms |
+| 45 nodes, 53 edges | ~7 ms | ~12 ms |
+| 128 nodes, 182 edges | ~56 ms | ~140 ms |
+| 300 nodes, 488 edges | ~520 ms | ~1200 ms |
 
-- Detours need a second libavoid run, so a full run takes about twice as long.
+- Detours need a second libavoid run, so a full run takes about twice as long;
+  separating overlaps adds ~15 %.
   While a node is dragged, runs are drafts without detours; the release routes
   once more in full. With `worker` all of it stays off the main thread, which
-  is the way to go for large graphs. `detourCrowded: false` skips it.
+  is the way to go for large graphs. `detourCrowdedAreas: false` skips it.
 - While dragging, `dragRouteInterval: 'auto'` spaces re-routes out so routing
   takes at most about half of the time; edges follow ~5 times per second and
   the final position is routed on release.
@@ -167,11 +171,12 @@ routing.setOptions({ cornerRadius: 0 });// change options and re-route; invalid 
 routing.options;                      // the options in use (frozen)
 routing.destroy();                    // stop and restore the original edge styles
 
-cy.on('avoidrouted', (evt, { edges, routingMs, totalMs }) => { … });
+cy.on('avoidrouted', (evt, { edgeCount, routingMs, totalMs }) => { … });
 cy.on('avoiderror', (evt, error) => { … }); // an automatic re-route failed (also logged)
 ```
 
-The options are documented on the `LibavoidOptions` / `RoutingOptions` types,
+The options are documented on the `LibavoidOptions` type and, for routing, on
+`PluginRoutingOptions` and `RawLibavoidOptions` (together `RoutingOptions`),
 so they show up in the editor.
 
 ### Routing in a Web Worker
@@ -220,7 +225,7 @@ const { routes, routingMs } = await router.route(model, DEFAULT_ROUTING_OPTIONS)
 ```
 
 Both implement `RoutingBackend`, the interface the plugin routes through.
-`routeQuality(routes, model)` measures overlaps, crossings and length. Other
+`measureRoutes(routes, model)` measures overlaps, crossings and length. Other
 building blocks, e.g. `EdgeStyler` or `separateOverlaps`, are not part of the
 public API; import them from their files if you need them.
 

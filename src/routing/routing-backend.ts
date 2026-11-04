@@ -1,7 +1,6 @@
 /**
  * Where a graph is routed: in this thread (LocalRouter) or in a Web Worker
- * (WorkerRouter). LibavoidRouting only knows this interface, so it has a single
- * code path for both.
+ * (WorkerRouter). Callers route the same way in both.
  */
 
 import type { Point } from '../shared/geometry';
@@ -29,8 +28,13 @@ export interface RoutingBackend
    */
   readonly blocksThread: boolean;
   /**
-   * Rejects if routing fails. `options` may be a larger object, e.g. the plugin's
-   * options; only the routing options are used.
+   * Routes a graph model.
+   *
+   * @param model   the graph to route
+   * @param options may be a larger object, e.g. the plugin's options; only the
+   *   {@link RoutingOptions} are used
+   * @returns the routes and how long routing took; rejects if routing fails or the
+   *   backend is disposed
    */
   route(model: GraphModel, options: RoutingOptions): Promise<RouteResult>;
   /** Rejects the requests in flight and all later ones. */

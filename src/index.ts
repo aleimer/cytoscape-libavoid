@@ -22,16 +22,16 @@ import type { LibavoidOptions } from './cytoscape-adapter/options';
 
 // the plugin
 export { LibavoidRouting } from './cytoscape-adapter/libavoid-routing';
-export { DEFAULTS } from './cytoscape-adapter/options';
+export { DEFAULT_OPTIONS } from './cytoscape-adapter/options';
 export type { EdgeSides, LibavoidOptions, RoutedEventInfo } from './cytoscape-adapter/options';
 // routing without Cytoscape
 export type { Avoid, RoutingOptionName, RoutingParameterName } from './libavoid/api';
 export { loadLibavoid } from './libavoid/load';
-export { routeQuality } from './postprocess/route-quality';
+export { measureRoutes } from './postprocess/route-quality';
 export type { RouteQuality } from './postprocess/route-quality';
 export { EdgeRouter } from './routing/edge-router';
 export { DEFAULT_ROUTING_OPTIONS } from './routing/options';
-export type { RoutingOptions } from './routing/options';
+export type { PluginRoutingOptions, RawLibavoidOptions, RoutingOptions } from './routing/options';
 export type { RouteResult, RoutingBackend } from './routing/routing-backend';
 export type { Point, Side } from './shared/geometry';
 export type { GraphEdge, GraphModel, GraphNode } from './shared/graph';
@@ -46,12 +46,20 @@ declare module 'cytoscape'
     /**
      * With options: creates a new routing instance (replacing the previous one).
      * Without options: returns the current instance, creating it with defaults if needed.
+     *
+     * @param options the options to change, see {@link LibavoidOptions}
+     * @returns the routing instance of this graph
+     * @throws {Error} for invalid options
      */
     libavoid(options?: Partial<LibavoidOptions>): LibavoidRouting;
   }
 }
 
-/** Cytoscape extension entry point: `cytoscape.use(cytoscapeLibavoid)` adds `cy.libavoid()`. */
+/**
+ * Cytoscape extension entry point: `cytoscape.use(cytoscapeLibavoid)` adds `cy.libavoid()`.
+ *
+ * @param cytoscape the Cytoscape factory to register the extension with
+ */
 export default function register(cytoscape: typeof cytoscapeFactory): void
 {
   cytoscape('core', 'libavoid', function(this: Core, options?: Partial<LibavoidOptions>): LibavoidRouting

@@ -1,9 +1,8 @@
-// Finds detours for edges that do not fit into a crowded gap, see route-geometry.ts.
+/** Finds detours for edges that do not fit into a crowded gap, see route-geometry.ts. */
 
 import { extentOf } from '../shared/geometry';
 import type { Point } from '../shared/geometry';
-import type { GraphModel } from '../shared/graph';
-import { RouteGeometry } from './route-geometry';
+import type { RouteGeometry } from './route-geometry';
 import type { Segment } from './segment';
 
 /** The gap of a detour is at least this many times as wide as the crowded one... */
@@ -13,6 +12,7 @@ const MIN_GAP_STROKES = 4;
 /** The unbounded areas outside the outermost nodes count as this many strokes wide. */
 const OUTER_GAP_STROKES = 10;
 
+/** What {@link findDetours} needs to know beyond the routes. */
 export interface DetourOptions
 {
   /** Space kept between neighbouring strokes (px). */
@@ -26,11 +26,22 @@ export interface DetourOptions
   maxDetours: number;
 }
 
-/** A gap between nodes across a segment's axis, from `low` to `high`. */
+/** A gap between nodes across a segment's axis. */
 interface Gap
 {
+  /** Where the gap starts on the segment's {@link Segment.positionAxis}; may be -Infinity. */
   low: number;
+  /** Where it ends; may be Infinity. */
   high: number;
+}
+
+/** A segment that does not fit into its crowded gap. */
+interface Evicted
+{
+  /** The segment to detour. */
+  segment: Segment;
+  /** How wide the crowded gap is (px). */
+  room: number;
 }
 
 /**
@@ -38,33 +49,31 @@ interface Gap
  * into them. The segments that stay in such a gap are the short, local ones;
  * for each of the others it picks a point in the nearest gap that is free
  * of nodes over the segment's whole length and clearly wider. Routing again with
- * these points as checkpoints moves the edges there. Does not change `geometry`.
+ * these points as checkpoints moves the edges there.
  *
+ * @param geometry the routes of a libavoid run, before they are separated; not changed
+ * @param options  spacing, clearance and the maximum number of detours
  * @returns edge id -> checkpoint
  */
-export function findDetoursIn(geometry: RouteGeometry, options: DetourOptions): Map<string, Point>
+export function findDetours(geometry: RouteGeometry, options: DetourOptions): Map<string, Point>
 {
   return new DetourFinder(geometry, options).find();
 }
 
-/** findDetoursIn() for plain routes. @returns edge id -> checkpoint */
-export function findDetours(
-  routes: ReadonlyMap<string, readonly Point[]>,
-  model: GraphModel,
-  options: DetourOptions,
-): Map<string, Point>
-{
-  return findDetoursIn(new RouteGeometry(routes, model), options);
-}
-
-/** The search behind findDetoursIn(), with the bookkeeping of the gaps that already got detours. */
+/** The search behind {@link findDetours}, with the bookkeeping of the gaps that already got detours. */
 class DetourFinder
 {
+  /** The routes to search; never changed. */
   private readonly geometry: RouteGeometry;
+  /** See {@link findDetours}. */
   private readonly options: DetourOptions;
-  /** How many detours each gap got so far, to line them up. */
+  /** How many detours each gap got so far, to line them up; keyed by axis and gap bounds. */
   private readonly sentToGap = new Map<string, number>();
 
+  /**
+   * @param geometry the routes to search
+   * @param options  spacing, clearance and the maximum number of detours
+   */
   constructor(geometry: RouteGeometry, options: DetourOptions)
   {
     this.geometry = geometry;
@@ -72,8 +81,10 @@ class DetourFinder
   }
 
   /**
-   * Edge id -> checkpoint for the edges that do not fit into their gap: the
-   * longest segments first, at most `maxDetours`, only where a clearly wider gap is near.
+   * Picks a checkpoint for each edge that does not fit into its gap: the longest
+   * segments first, at most `maxDetours`, only where a clearly wider gap is near.
+   *
+   * @returns edge id -> checkpoint
    */
   find(): Map<string, Point>
   {
@@ -94,18 +105,28 @@ class DetourFinder
       {
         continue;
       }
-      const position = this.positionInGap(segment, gap);
+      const position = this.takePosition(segment, gap);
       const [from, to] = segment.span;
-      const middle = (from + to) / 2;
-      detours.set(segment.edgeId, segment.axis === 'x' ? { x: position, y: middle } : { x: middle, y: position });
+      const spanCentre = (from + to) / 2;
+      detours.set(
+        segment.edgeId,
+        segment.positionAxis === 'x' ? { x: position, y: spanCentre } : { x: spanCentre, y: position },
+      );
     }
     return detours;
   }
 
-  /** Detours into the same gap are lined up from its side facing the crowded one. */
-  private positionInGap(segment: Segment, gap: Gap): number
+  /**
+   * The next free position in a gap for a detour, and counts it as taken: detours
+   * into the same gap line up from its side facing the crowded one, but not beyond its centre.
+   *
+   * @param segment the segment to detour; its width sets the step
+   * @param gap     the gap it goes to, see {@link DetourFinder.nearestWideGap}
+   * @returns the position on the segment's {@link Segment.positionAxis}
+   */
+  private takePosition(segment: Segment, gap: Gap): number
   {
-    const key = `${segment.axis}:${gap.low}:${gap.high}`;
+    const key = `${segment.positionAxis}:${gap.low}:${gap.high}`;
     const count = (this.sentToGap.get(key) ?? 0) + 1;
     this.sentToGap.set(key, count);
     const step = segment.width + this.options.spacing;
@@ -115,10 +136,15 @@ class DetourFinder
       Math.max(centre, gap.high - count * step);
   }
 
-  /** The segments that do not fit into their gap, with the room it has. */
-  private evictedSegments(): Array<{ segment: Segment; room: number; }>
+  /**
+   * The segments that do not fit into their gap. Per bundle of overlapping inner
+   * segments, the shortest ones stay as long as there is room; the rest are evicted.
+   *
+   * @returns the evicted segments with the room of their gap, unsorted
+   */
+  private evictedSegments(): Evicted[]
   {
-    const evicted: Array<{ segment: Segment; room: number; }> = [];
+    const evicted: Evicted[] = [];
     for (const bundle of this.geometry.overlappingBundles())
     {
       // end segments cannot leave their node, so only inner segments get detours
@@ -154,6 +180,10 @@ class DetourFinder
    * The nearest gap across the segment's axis that is free over the segment's whole
    * length (keeping the clearance to the nodes) and clearly wider than the crowded
    * one. Outside the outermost nodes there is always room.
+   *
+   * @param segment     the segment to detour
+   * @param crowdedRoom the width of its crowded gap (px)
+   * @returns the gap, with an unbounded side made finite, or undefined if none is wide enough
    */
   private nearestWideGap(segment: Segment, crowdedRoom: number): Gap | undefined
   {
@@ -191,13 +221,18 @@ class DetourFinder
     return best;
   }
 
-  /** The gaps between the nodes beside the segment, across its axis, from low to high. */
+  /**
+   * The gaps between the nodes beside a segment, across its axis.
+   *
+   * @param segment the segment whose span the nodes must reach into
+   * @returns the gaps from low to high; the first and last are unbounded
+   */
   private gapsAcross(segment: Segment): Gap[]
   {
     const { clearance } = this.options;
     const blocked = this.geometry
       .obstaclesBeside(segment, clearance)
-      .map((node) => extentOf(node, segment.axis, clearance))
+      .map((node) => extentOf(node, segment.positionAxis, clearance))
       .sort((a, b) => a[0] - b[0]);
     const gaps: Gap[] = [];
     let low = -Infinity;

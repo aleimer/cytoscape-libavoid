@@ -8,9 +8,14 @@ import type { Core, EventObject, NodeSingular } from 'cytoscape';
 /** The grabbed nodes, kept up to date from `grab`, `free` and `remove` events. */
 export class DragTracker
 {
+  /** The nodes grabbed now, as far as the events tell. */
   private readonly grabbed = new Set<NodeSingular>();
 
-  /** Starts with the nodes grabbed now, e.g. when listening starts during a drag. */
+  /**
+   * Starts with the nodes grabbed now, e.g. when listening starts during a drag.
+   *
+   * @param cy the graph to read the grabbed nodes from
+   */
   reset(cy: Core): void
   {
     this.grabbed.clear();
@@ -21,7 +26,7 @@ export class DragTracker
   }
 
   /** True while a node is grabbed. Re-checks the tracked nodes, so a missed `free` does not stick. */
-  get active(): boolean
+  get dragging(): boolean
   {
     for (const node of this.grabbed)
     {
@@ -34,13 +39,21 @@ export class DragTracker
     return false;
   }
 
-  /** For `grab`. */
+  /**
+   * Listener for `grab`.
+   *
+   * @param event its target is the grabbed node
+   */
   readonly onGrab = (event: EventObject): void =>
   {
     this.grabbed.add(event.target as NodeSingular);
   };
 
-  /** For `free` and `remove`. */
+  /**
+   * Listener for `free` and `remove`.
+   *
+   * @param event its target is the released or removed node
+   */
   readonly onRelease = (event: EventObject): void =>
   {
     this.grabbed.delete(event.target as NodeSingular);

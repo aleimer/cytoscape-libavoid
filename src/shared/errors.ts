@@ -4,15 +4,32 @@
  * such errors.
  */
 
+/** Put in front of every message of the plugin. */
 const PREFIX = 'cytoscape-libavoid: ';
 
-/** `message` with the plugin's name in front, once. */
+/**
+ * Prefixes a message with the plugin's name, once.
+ *
+ * @param message the text, with or without the prefix
+ * @returns `message` starting with the plugin's name
+ */
 export const pluginMessage = (message: string): string => (message.startsWith(PREFIX) ? message : PREFIX + message);
 
-/** An Error with pluginMessage(). */
+/**
+ * An Error whose message starts with the plugin's name, see {@link pluginMessage}.
+ *
+ * @param message the text, with or without the prefix
+ * @returns the error, not thrown
+ */
 export const pluginError = (message: string): Error => new Error(pluginMessage(message));
 
-/** Throws unless `value` is a finite number of at least 0; `name` is the option, for the message. */
+/**
+ * Throws unless `value` is a finite number of at least 0.
+ *
+ * @param name  the option, for the message
+ * @param value the value to check
+ * @throws {Error} a {@link pluginError} naming the option and the value
+ */
 export function checkNonNegative(name: string, value: unknown): void
 {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
@@ -21,7 +38,14 @@ export function checkNonNegative(name: string, value: unknown): void
   }
 }
 
-/** Throws unless `value` is one of `allowed`; `name` is the option, for the message. */
+/**
+ * Throws unless `value` is one of `allowed`.
+ *
+ * @param name    the option, for the message
+ * @param value   the value to check
+ * @param allowed the values the option accepts
+ * @throws {Error} a {@link pluginError} naming the option and the allowed values
+ */
 export function checkOneOf(name: string, value: unknown, allowed: readonly unknown[]): void
 {
   if (!allowed.includes(value))

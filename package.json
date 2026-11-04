@@ -1,6 +1,6 @@
 {
   "name": "cytoscape-libavoid",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly)",
   "homepage": "https://github.com/pkabalski/cytoscape-libavoid#readme",
@@ -12,7 +12,7 @@
     "url": "git+https://github.com/pkabalski/cytoscape-libavoid.git"
   },
   "license": "MIT",
-  "author": "Philipp Kabala",
+  "author": "Alexander Leimer",
   "type": "module",
   "scripts": {
     "typecheck": "tsc && tsc -p tsconfig.strict.json",

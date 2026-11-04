@@ -1,4 +1,4 @@
-// Reads the routing input from a Cytoscape graph.
+/** Reads the routing input from a Cytoscape graph. */
 
 import type { Core, EdgeSingular, NodeSingular } from 'cytoscape';
 import { isSide, SIDES } from '../shared/geometry';
@@ -9,40 +9,48 @@ import type { LibavoidOptions } from './options';
 /** The routing input at one moment. */
 export interface Snapshot
 {
+  /** The graph to route, see {@link readModel}. */
   model: GraphModel;
-  /** The model serialised: a run is skipped if it equals the last run's key. */
-  key: string;
+  /** The model serialised: a run is skipped if it equals the last run's. */
+  modelKey: string;
   /**
-   * Cytoscape's position of every node in the model. EdgeStyler anchors the routes
+   * Cytoscape's position of every node in the model. The routes are anchored
    * relative to these, so routes that arrive late (from a worker) still start and
    * end at their nodes.
    */
   nodePositions: Map<string, Point>;
-  /** Taken while a node is dragged: the run is a quicker draft, see LibavoidRouting. */
+  /** Taken while a node is dragged: routing it may skip slow steps (a draft). */
   draft: boolean;
 }
 
-/** The options readModel() uses. */
+/** The options {@link readModel} uses. */
 export type ModelOptions = Pick<LibavoidOptions, 'edges' | 'obstacles' | 'includeLabels' | 'edgeWidth' | 'edgeSides'>;
 
 /**
  * The routing input now: the model, serialised for comparison, and the node positions.
  *
- * @param draft a node is being dragged
+ * @param cy      the graph
+ * @param options which elements to read and how, see {@link ModelOptions}
+ * @param draft   true while a node is being dragged
+ * @returns the snapshot
  */
 export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): Snapshot
 {
   const nodePositions = new Map<string, Point>();
   const model = readModel(cy, options, nodePositions);
-  return { model, key: JSON.stringify(model), nodePositions, draft };
+  return { model, modelKey: JSON.stringify(model), nodePositions, draft };
 }
 
 /**
- * The visible obstacle nodes and the visible edges between two visible nodes. An
- * edge end that is no obstacle, e.g. a compound node, is added as an endpoint-only
- * node; edges between a compound node and a node inside it are left out.
+ * Reads the graph to route: the visible obstacle nodes and the visible edges
+ * between two visible nodes. An edge end that is no obstacle, e.g. a compound
+ * node, is added as an endpoint-only node; edges between a compound node and a
+ * node inside it are left out.
  *
+ * @param cy            the graph
+ * @param options       which elements to read and how, see {@link ModelOptions}
  * @param nodePositions filled with the position of every node in the model
+ * @returns the plain graph model, in Cytoscape's element order
  */
 export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<string, Point> = new Map()): GraphModel
 {
@@ -56,6 +64,7 @@ export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<st
     .flatMap((edge) => [edge.source(), edge.target()])
     .filter((node) => !obstacleIds.has(node.id()));
 
+  // the model node of a Cytoscape node; also records its position
   const toNode = (node: NodeSingular, obstacle: boolean): GraphNode =>
   {
     const { x, y } = node.position();
@@ -71,7 +80,12 @@ export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<st
   };
 }
 
-/** Visible, between two visible nodes, neither inside the other. */
+/**
+ * Whether an edge is routed at all.
+ *
+ * @param edge a Cytoscape edge
+ * @returns true if it and both its nodes are visible and neither node is inside the other
+ */
 function isRoutable(edge: EdgeSingular): boolean
 {
   const source = edge.source();
@@ -85,7 +99,14 @@ function isRoutable(edge: EdgeSingular): boolean
   );
 }
 
-/** The node's bounding box, so its border (and with `includeLabels` its label) counts. */
+/**
+ * The model node of a Cytoscape node, from its bounding box, so its border counts.
+ *
+ * @param node          a Cytoscape node
+ * @param obstacle      false for an endpoint-only node, see {@link GraphNode.obstacle}
+ * @param includeLabels whether its label counts as part of it
+ * @returns the rectangle around it
+ */
 function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boolean): GraphNode
 {
   const box = node.boundingBox({ includeLabels, includeOverlays: false });
@@ -93,26 +114,47 @@ function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boole
   return { id: node.id(), ...centre, width: box.w, height: box.h, ...(obstacle ? {} : { obstacle: false }) };
 }
 
+/**
+ * The model edge of a Cytoscape edge.
+ *
+ * @param edge    a routable Cytoscape edge, see {@link isRoutable}
+ * @param options for its width and allowed sides
+ * @returns its ends, width and side restrictions
+ */
 function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge
 {
   const sides = options.edgeSides?.(edge);
+  const sourceSides = restrictedSides(sides?.source);
+  const targetSides = restrictedSides(sides?.target);
+  // left out rather than undefined when all four are allowed: the model is serialised for the modelKey
   return {
     id: edge.id(),
     source: edge.source().id(),
     target: edge.target().id(),
     width: Number(options.edgeWidth(edge)) || 0,
-    ...sidesOf('sourceSides', sides?.source),
-    ...sidesOf('targetSides', sides?.target),
+    ...(sourceSides && { sourceSides }),
+    ...(targetSides && { targetSides }),
   };
 }
 
-/** `{ [key]: valid sides }`, or nothing if all four are allowed. */
-function sidesOf(key: 'sourceSides' | 'targetSides', sides: Side | readonly Side[] | undefined): Partial<GraphEdge>
+/**
+ * Cleans one end of an `edgeSides` result.
+ *
+ * @param sides one side, a list, or nothing
+ * @returns the valid, distinct sides; undefined if that allows all four (or names none)
+ */
+function restrictedSides(sides: Side | readonly Side[] | undefined): Side[] | undefined
 {
   const valid = [...new Set(typeof sides === 'string' ? [sides] : (sides ?? []))].filter(isSide);
-  return valid.length && valid.length < SIDES.length ? { [key]: valid } : {};
+  return valid.length && valid.length < SIDES.length ? valid : undefined;
 }
 
+/**
+ * Drops repeated nodes, e.g. a compound node many edges end at.
+ *
+ * @param nodes Cytoscape nodes, maybe repeated
+ * @returns each node once, in the order of its first appearance
+ */
 const uniqueById = (nodes: NodeSingular[]): NodeSingular[] => [
   ...new Map(nodes.map((node) => [node.id(), node])).values(),
 ];

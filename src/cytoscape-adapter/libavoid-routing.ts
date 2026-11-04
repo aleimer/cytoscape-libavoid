@@ -22,27 +22,36 @@ import type { Snapshot } from './snapshot';
 
 /** Where `cy.libavoid()` keeps the instance, in `cy.scratch()`. */
 export const SCRATCH_KEY = '_libavoid';
+/** Emitted on `cy` after every run, with a {@link RoutedEventInfo}. */
 const ROUTED_EVENT = 'avoidrouted';
+/** Emitted on `cy` when a run nobody awaits fails, with the error. */
 const ERROR_EVENT = 'avoiderror';
 
 /** Routes the edges of one Cytoscape instance; created by `cy.libavoid(options)`. */
 export class LibavoidRouting
 {
+  /** The graph whose edges are routed. */
   readonly cy: Core;
   /** Resolves once libavoid is loaded and the first routing run is done. */
   readonly ready: Promise<LibavoidRouting>;
 
+  /** See {@link LibavoidRouting.options}. */
   private currentOptions: Readonly<LibavoidOptions>;
+  /** Routes in this thread ({@link LocalRouter}) or in a worker ({@link WorkerRouter}). */
   private readonly backend: RoutingBackend;
+  /** Draws the routes on the edges. */
   private readonly styler: EdgeStyler;
+  /** Decides when a change is routed. */
   private readonly scheduler: RouteScheduler;
-  private readonly drag = new DragTracker();
+  /** Knows whether a node is being dragged. */
+  private readonly dragTracker = new DragTracker();
   /**
    * starting: the first run is not done yet; nothing listens to changes.
    * running: listening (with `live`) and routing changes.
    * destroyed: no more runs; answers still in flight are dropped.
    */
   private state: 'starting' | 'running' | 'destroyed' = 'starting';
+  /** See {@link LibavoidRouting.routes}. */
   private currentRoutes = new Map<string, Point[]>();
   /** The run in flight; one at a time. Settles (never rejects) once it is done. */
   private inFlight: Promise<void> | undefined;
@@ -50,25 +59,32 @@ export class LibavoidRouting
   private rerun = false;
   /**
    * The last run: its model serialised, to skip runs when nothing moved; whether it
-   * was a draft during a drag, so the release routes once more in full; and its end
-   * and duration, for the pause between runs while dragging.
+   * was a draft during a drag, so the release routes once more in full; and when it
+   * ended and how long it kept a thread busy, for the pause between runs while dragging.
    */
-  private last = { modelKey: '', draft: false, end: 0, duration: 0 };
-  /** The Cytoscape listeners added by startListening(), to remove them again. */
+  private lastRun = { modelKey: '', draft: false, endedAt: 0, busyMs: 0 };
+  /** The Cytoscape listeners added by {@link LibavoidRouting.startListening}, to remove them again. */
   private listeners: Array<[events: string, selector: string, handler: EventHandler]> = [];
 
+  /**
+   * Starts loading libavoid (unless a worker routes) and routes once, see {@link LibavoidRouting.ready}.
+   *
+   * @param cy      the graph whose edges to route
+   * @param options the options to change, see {@link LibavoidOptions}
+   * @throws {Error} for invalid options
+   */
   constructor(cy: Core, options: Partial<LibavoidOptions> = {})
   {
     this.cy = cy;
     this.currentOptions = resolveOptions(options);
-    const { worker, wasmUrl, avoidLib } = this.currentOptions;
+    const { worker, wasmUrl, libavoid } = this.currentOptions;
     this.backend = worker ?
       new WorkerRouter(worker, absoluteUrl(wasmUrl)) :
-      new LocalRouter(avoidLib ?? loadLibavoid(wasmUrl));
+      new LocalRouter(libavoid ?? loadLibavoid(wasmUrl));
     this.styler = new EdgeStyler(cy);
     this.scheduler = new RouteScheduler(
       {
-        dragging: () => this.drag.active,
+        dragging: () => this.dragTracker.dragging,
         restDelay: () => this.currentOptions.dragRouteDelay,
         pause: () => this.dragPause(),
       },
@@ -78,7 +94,7 @@ export class LibavoidRouting
     this.ready = this.start().then(() => this);
   }
 
-  /** The options in use (frozen); change them with setOptions(). */
+  /** The options in use (frozen); change them with {@link LibavoidRouting.setOptions}. */
   get options(): Readonly<LibavoidOptions>
   {
     return this.currentOptions;
@@ -90,19 +106,32 @@ export class LibavoidRouting
     return this.currentRoutes;
   }
 
-  /** Route points of an edge (element or id), or undefined if it is not routed. */
+  /**
+   * The route of one edge.
+   *
+   * @param edge the edge element or its id
+   * @returns its route points from the last run, or undefined if it is not routed
+   */
   getRoute(edge: EdgeSingular | string): Point[] | undefined
   {
     return this.currentRoutes.get(typeof edge === 'string' ? edge : edge.id());
   }
 
-  /** The plain graph model routing gets now, e.g. to see why an edge is not routed. */
+  /**
+   * The plain graph model routing gets now, e.g. to see why an edge is not routed.
+   *
+   * @returns the model, read from the graph on every call
+   */
   model(): GraphModel
   {
     return readModel(this.cy, this.currentOptions);
   }
 
-  /** Routes all edges now, after the run in flight; rejects if routing fails. */
+  /**
+   * Routes all edges now, after the run in flight.
+   *
+   * @returns the new routes; rejects if routing fails
+   */
   async refresh(): Promise<ReadonlyMap<string, Point[]>>
   {
     while (this.inFlight)
@@ -133,8 +162,12 @@ export class LibavoidRouting
   }
 
   /**
-   * Changes options and re-routes. Invalid options throw; routing errors arrive as
-   * `avoiderror` events. `worker`, `wasmUrl` and `avoidLib` only count on creation.
+   * Changes options and re-routes. Routing errors arrive as `avoiderror` events.
+   * `worker`, `wasmUrl` and `libavoid` only count on creation.
+   *
+   * @param options the options to change; the others keep their current value
+   * @returns this instance, for chaining
+   * @throws {Error} for invalid options
    */
   setOptions(options: Partial<LibavoidOptions>): this
   {
@@ -152,7 +185,7 @@ export class LibavoidRouting
     {
       this.stopListening();
     }
-    this.last.modelKey = ''; // the options are not part of the model, so force the next run
+    this.lastRun.modelKey = ''; // the options are not part of the model, so force the next run
     if (this.inFlight)
     {
       this.rerun = true;
@@ -170,7 +203,11 @@ export class LibavoidRouting
     this.stop(true);
   }
 
-  /** Routes once (loading libavoid unless a worker does the routing), then listens for changes. */
+  /**
+   * Routes once (loading libavoid unless a worker does the routing), then listens for changes.
+   *
+   * @returns resolves once the first run is done; rejects if it fails, unless destroyed meanwhile
+   */
   private async start(): Promise<void>
   {
     await Promise.resolve(); // never route inside the constructor
@@ -199,13 +236,17 @@ export class LibavoidRouting
     }
     this.startListening();
     // changes made while the first run was in flight, e.g. with a worker, were not heard
-    if (this.snapshot().key !== this.last.modelKey)
+    if (this.snapshot().modelKey !== this.lastRun.modelKey)
     {
       this.scheduleRoute();
     }
   }
 
-  /** @param restoreStyles false when the graph itself is destroyed: its renderer is already gone */
+  /**
+   * Ends routing for good: no more runs, listeners or answers.
+   *
+   * @param restoreStyles false when the graph itself is destroyed: its renderer is already gone
+   */
   private stop(restoreStyles: boolean): void
   {
     if (this.state === 'destroyed')
@@ -222,14 +263,14 @@ export class LibavoidRouting
     {
       return;
     }
-    this.styler.clear();
+    this.styler.reset();
     if (this.cy.scratch(SCRATCH_KEY) === this)
     {
       this.cy.removeScratch(SCRATCH_KEY);
     }
   }
 
-  /** `cy.destroy()` also ends the routing, so no pending re-route touches the destroyed graph. */
+  /** Listener for `destroy`: `cy.destroy()` also ends the routing, so no pending re-route touches the destroyed graph. */
   private readonly onGraphDestroyed = (): void => this.stop(false);
 
   /**
@@ -239,7 +280,7 @@ export class LibavoidRouting
   private runScheduledRoute(): void
   {
     // checked here, not per event: a drag also fires style events (compound parents); 'free' re-routes
-    if (!this.currentOptions.rerouteOnDrag && this.drag.active)
+    if (!this.currentOptions.rerouteOnDrag && this.dragTracker.dragging)
     {
       return;
     }
@@ -249,26 +290,35 @@ export class LibavoidRouting
       return;
     }
     const snapshot = this.snapshot();
-    if (snapshot.key === this.last.modelKey && (snapshot.draft || !this.last.draft))
+    if (snapshot.modelKey === this.lastRun.modelKey && (snapshot.draft || !this.lastRun.draft))
     {
-      this.styler.reveal(snapshot.nodePositions); // e.g. a node dragged back to where it was routed
+      this.styler.unhideUpToDate(snapshot.nodePositions); // e.g. a node dragged back to where it was routed
       return;
     }
     this.run(snapshot).catch(this.reportError);
   }
 
-  /** The routing input now; while dragging a draft, see routingOptionsFor(). */
+  /**
+   * The routing input now.
+   *
+   * @returns the snapshot; a draft while dragging, see {@link LibavoidRouting.routingOptionsFor}
+   */
   private snapshot(): Snapshot
   {
-    return takeSnapshot(this.cy, this.currentOptions, this.drag.active);
+    return takeSnapshot(this.cy, this.currentOptions, this.dragTracker.dragging);
   }
 
-  /** Routes a snapshot and applies the routes; rejects if routing fails. Changes in the meantime are routed afterwards. */
+  /**
+   * Routes a snapshot and applies the routes. Changes in the meantime are routed afterwards.
+   *
+   * @param snapshot the routing input
+   * @returns resolves once the routes are applied; rejects if routing fails
+   */
   private run(snapshot: Snapshot): Promise<void>
   {
     // also on failure: the same input is not retried on every following event
-    this.last.modelKey = snapshot.key;
-    this.last.draft = snapshot.draft;
+    this.lastRun.modelKey = snapshot.modelKey;
+    this.lastRun.draft = snapshot.draft;
     const start = performance.now();
     const run = this.backend.route(snapshot.model, this.routingOptionsFor(snapshot)).then(({ routes, routingMs }) =>
     {
@@ -292,30 +342,47 @@ export class LibavoidRouting
     return run;
   }
 
-  /** Styles the edges, keeps the routes and the timing of the run, and emits `avoidrouted`. */
+  /**
+   * Styles the edges, keeps the routes and the timing of the run, and emits `avoidrouted`.
+   *
+   * @param routes    edge id -> route points of the run
+   * @param snapshot  the input they were computed for, for the node positions
+   * @param routingMs how long the backend routed (ms)
+   * @param start     when the run started, from `performance.now()`
+   */
   private applyRoutes(routes: Map<string, Point[]>, snapshot: Snapshot, routingMs: number, start: number): void
   {
     const { cornerRadius, labelPosition } = this.currentOptions;
     const stylingStart = performance.now();
-    this.styler.apply(routes, { cornerRadius, labelPosition }, snapshot.nodePositions);
+    this.styler.setRoutes(routes, { cornerRadius, labelPosition }, snapshot.nodePositions);
     this.currentRoutes = routes;
     const end = performance.now();
-    this.last.end = end;
+    this.lastRun.endedAt = end;
     // the time the run kept a thread busy; waiting (for libavoid, a worker or other code) does not count
-    this.last.duration = routingMs + (end - stylingStart);
-    const info: RoutedEventInfo = { edges: routes.size, routingMs, totalMs: end - start };
+    this.lastRun.busyMs = routingMs + (end - stylingStart);
+    const info: RoutedEventInfo = { edgeCount: routes.size, routingMs, totalMs: end - start };
     this.cy.emit(ROUTED_EVENT, [info]);
   }
 
-  /** While dragging, routes are drafts: without the slower detours around crowded gaps. */
+  /**
+   * The options for routing a snapshot. While dragging, routes are drafts: without
+   * the slower detours around crowded areas.
+   *
+   * @param snapshot the routing input
+   * @returns the current options, with `detourCrowdedAreas` off for a draft
+   */
   private routingOptionsFor(snapshot: Snapshot): LibavoidOptions
   {
-    return snapshot.draft && this.currentOptions.detourCrowded ?
-      { ...this.currentOptions, detourCrowded: false } :
+    return snapshot.draft && this.currentOptions.detourCrowdedAreas ?
+      { ...this.currentOptions, detourCrowdedAreas: false } :
       this.currentOptions;
   }
 
-  /** For runs nobody awaits: an `avoiderror` event and the console. */
+  /**
+   * For runs nobody awaits: an `avoiderror` event and the console. Silent once destroyed.
+   *
+   * @param error why the run failed
+   */
   private readonly reportError = (error: unknown): void =>
   {
     if (this.state === 'destroyed')
@@ -326,7 +393,11 @@ export class LibavoidRouting
     console.error(pluginMessage('re-route failed'), error);
   };
 
-  /** How long to wait before the next re-route while dragging, see `dragRouteInterval`. */
+  /**
+   * How long to wait before the next re-route while dragging, see `dragRouteInterval`.
+   *
+   * @returns the wait (ms); <= 0 = no wait
+   */
   private dragPause(): number
   {
     const { dragRouteInterval } = this.currentOptions;
@@ -334,8 +405,8 @@ export class LibavoidRouting
     {
       return 0; // e.g. a worker
     }
-    const interval = dragRouteInterval === 'auto' ? this.last.duration : dragRouteInterval;
-    return this.last.end + interval - performance.now();
+    const interval = dragRouteInterval === 'auto' ? this.lastRun.busyMs : dragRouteInterval;
+    return this.lastRun.endedAt + interval - performance.now();
   }
 
   /** Listens to every change that can move a route, and to grab / release for the drag options. */
@@ -345,9 +416,9 @@ export class LibavoidRouting
     {
       return;
     }
-    this.drag.reset(this.cy);
-    this.listen('grab', 'node', this.drag.onGrab);
-    this.listen('free remove', 'node', this.drag.onRelease);
+    this.dragTracker.reset(this.cy);
+    this.listen('grab', 'node', this.dragTracker.onGrab);
+    this.listen('free remove', 'node', this.dragTracker.onRelease);
     const reroute = () => this.scheduleRoute();
     this.listen('add remove data', '*', reroute);
     this.listen('class style', 'node', reroute); // node size may depend on classes / styles
@@ -364,16 +435,19 @@ export class LibavoidRouting
   /**
    * With `hideEdgesOnDrag`: hides the edges of a dragged node until they are routed
    * again, and those of its children and of the compound nodes around it, which move along.
+   *
+   * @param node the node that moved
    */
   private hideDraggedEdges(node: NodeSingular): void
   {
-    if (!this.currentOptions.hideEdgesOnDrag || !this.drag.active)
+    if (!this.currentOptions.hideEdgesOnDrag || !this.dragTracker.dragging)
     {
       return;
     }
     this.styler.hide(node.union(node.descendants()).union(node.ancestors()).connectedEdges());
   }
 
+  /** Removes every listener {@link LibavoidRouting.startListening} added. */
   private stopListening(): void
   {
     for (const [events, selector, handler] of this.listeners)
@@ -383,6 +457,13 @@ export class LibavoidRouting
     this.listeners = [];
   }
 
+  /**
+   * Adds a Cytoscape listener and remembers it for {@link LibavoidRouting.stopListening}.
+   *
+   * @param events   space-separated event names
+   * @param selector the elements to listen on
+   * @param handler  the listener
+   */
   private listen(events: string, selector: string, handler: EventHandler): void
   {
     this.cy.on(events, selector, handler);
@@ -390,7 +471,13 @@ export class LibavoidRouting
   }
 }
 
-/** A worker resolves relative URLs against its own script, so they are made absolute first. */
+/**
+ * Makes a URL absolute against the page: a worker would resolve a relative URL
+ * against its own script instead.
+ *
+ * @param url relative or absolute; undefined = libavoid-js's default
+ * @returns the absolute URL; unchanged outside a browser page
+ */
 function absoluteUrl(url: string | undefined): string | undefined
 {
   if (url === undefined || typeof document === 'undefined')

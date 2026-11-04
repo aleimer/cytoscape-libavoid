@@ -1,6 +1,6 @@
 // The cold rolling section of the steel plant as the production app shows it,
 // in t/day: WBB feeds both TW stores, which pass coils between each other on
-// thin edges and on to KW-X. The thick WBB edges arrive at the sides the thin
+// thin edges and on to KW-X. The wide WBB edges arrive at the sides the thin
 // edges leave from and turn towards WBB; they attach at the centre of those
 // sides with the thin edges next to them. Used by demo/main.ts (?graph=tw) and
 // test/separation.test.ts.

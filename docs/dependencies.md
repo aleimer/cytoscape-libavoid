@@ -92,7 +92,7 @@ M["segment-index.ts"]
 N["simplify.ts"]
 O["overlap-separator.ts"]
 P["route-quality.ts"]
-Q["thickest-edge-centring.ts"]
+Q["widest-edge-centring.ts"]
 end
 subgraph T["worker"]
 U["worker-router.ts"]
@@ -151,7 +151,6 @@ H-->5
 H-->B
 J-->5
 J-->5
-J-->F
 J-->K
 J-->L
 K-->5
@@ -176,6 +175,7 @@ O-->L
 P-->5
 P-->F
 P-->K
+Q-->5
 Q-->5
 Q-->K
 Q-->L

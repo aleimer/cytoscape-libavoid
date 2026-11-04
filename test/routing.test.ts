@@ -92,7 +92,7 @@ test('loadLibavoid() with another URL after the first load warns and reuses the 
     assert.equal(await loadLibavoid(), avoid);
     assert.equal(warnings.length, 0, 'no URL: no warning');
     assert.equal(await loadLibavoid('elsewhere/libavoid.wasm'), avoid);
-    assert.match(warnings[0] ?? '', /already loaded from the default URL, ignoring elsewhere\/libavoid\.wasm/);
+    assert.match(warnings[0] ?? '', /libavoid uses the default URL, ignoring elsewhere\/libavoid\.wasm/);
   }
   finally
   {

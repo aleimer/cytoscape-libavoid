@@ -1,6 +1,6 @@
 # cytoscape-libavoid – Lizenzrechtliche Hinweise
 
-Stand: 26.10.2026 · gilt für cytoscape-libavoid 0.1.0 (TypeScript-Quellen in `src/`) mit libavoid-js 0.5.0-beta.5
+Stand: 04.11.2026 · gilt für cytoscape-libavoid 1.0.0 (TypeScript-Quellen in `src/`) mit libavoid-js 0.5.0-beta.5
 
 > **Keine Rechtsberatung.** Dieses Dokument fasst die Lizenzlage aus
 > technischer Sicht zusammen und zeigt, was im Projekt zu beachten ist. Vor
@@ -14,7 +14,7 @@ Stand: 26.10.2026 · gilt für cytoscape-libavoid 0.1.0 (TypeScript-Quellen in `
 ## 1. Kurzfassung
 
 - Das Plugin selbst ist eigener Code und steht unter der **MIT-Lizenz**
-  (`LICENSE`, © 2026 Philipp Kabala).
+  (`LICENSE`, © 2026 Alexander Leimer).
 - Der Kern, **libavoid** und die JavaScript-Portierung **libavoid-js**, steht
   unter der **GNU Lesser General Public License 2.1 oder später (LGPL-2.1+)**.
 - Die LGPL ist eine schwache Copyleft-Lizenz. Sie erlaubt die Nutzung in
@@ -36,7 +36,7 @@ Stand: 26.10.2026 · gilt für cytoscape-libavoid 0.1.0 (TypeScript-Quellen in `
 
 | Komponente | Lizenz | Rechteinhaber | Wo |
 |---|---|---|---|
-| **cytoscape-libavoid** (eigener Code) | MIT | Philipp Kabala | `src/`, wird in die Anwendung kompiliert |
+| **cytoscape-libavoid** (eigener Code) | MIT | Alexander Leimer | `src/`, wird in die Anwendung kompiliert |
 | **libavoid-js** 0.5.0-beta.5 (JS-Bindings, Build) | LGPL-2.1-or-later | Vladyslav Hnatiuk und Mitwirkende | npm-Abhängigkeit, wird vom Bundler der Anwendung mitgebündelt; `libavoid.wasm` als eigene Datei |
 | **libavoid** (C++, aus Adaptagrams) | LGPL-2.1-or-later, zusätzlich kommerziell lizenzierbar | Monash University | kompiliert in `libavoid.wasm` |
 | **Emscripten-Laufzeit** (Teil des libavoid-js-Codes) | MIT / NCSA | Emscripten-Autoren | im JS-Code von libavoid-js |

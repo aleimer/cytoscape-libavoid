@@ -1,23 +1,29 @@
-// Measures routes, to compare different routings of the same model.
+/** Measures routes, to compare different routings of the same model. */
 
 import type { Point } from '../shared/geometry';
 import type { GraphModel } from '../shared/graph';
 import { RouteGeometry } from './route-geometry';
 
+/** How good a set of routes is: less of each is better. */
 export interface RouteQuality
 {
   /** Length along which strokes of different edges lie on top of each other (px). */
-  overlap: number;
+  overlapLength: number;
   /** Crossings of segments of different edges. */
   crossings: number;
   /** Total route length (px). */
   length: number;
 }
 
-/** Overlaps, crossings and length of the orthogonal routes of a geometry. */
-export function measureQuality(geometry: RouteGeometry): RouteQuality
+/**
+ * Measures the orthogonal routes of a geometry.
+ *
+ * @param geometry the routes to measure; they are not changed
+ * @returns their overlaps, crossings and length
+ */
+export function measureGeometry(geometry: RouteGeometry): RouteQuality
 {
-  let overlap = 0;
+  let overlapLength = 0;
   let crossings = 0;
   let length = 0;
   for (const segment of geometry.segments)
@@ -25,12 +31,12 @@ export function measureQuality(geometry: RouteGeometry): RouteQuality
     length += segment.length;
     for (const near of geometry.overlapping(segment))
     {
-      overlap += segment.overlapLength(near) / 2; // each pair is seen twice
+      overlapLength += segment.overlapLength(near) / 2; // each pair is seen twice
     }
-    if (segment.axis === 'x')
+    if (segment.positionAxis === 'x')
     {
       const [from, to] = segment.span;
-      for (const horizontal of geometry.between('y', from, to))
+      for (const horizontal of geometry.segmentsBetween('y', from, to))
       {
         if (segment.crosses(horizontal))
         {
@@ -39,11 +45,17 @@ export function measureQuality(geometry: RouteGeometry): RouteQuality
       }
     }
   }
-  return { overlap, crossings, length };
+  return { overlapLength, crossings, length };
 }
 
-/** measureQuality() for plain routes. */
-export function routeQuality(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel): RouteQuality
+/**
+ * {@link measureGeometry} for plain routes.
+ *
+ * @param routes edge id -> route points
+ * @param model  the graph the routes belong to, for edge widths and nodes
+ * @returns their overlaps, crossings and length
+ */
+export function measureRoutes(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel): RouteQuality
 {
-  return measureQuality(new RouteGeometry(routes, model));
+  return measureGeometry(new RouteGeometry(routes, model));
 }

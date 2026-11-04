@@ -28,7 +28,7 @@ const smallElements: ElementDefinition[] = [
   ...SMALL_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}-${t}`, source: s, target: t, q } })),
 ];
 
-// ?graph=tw: the TW section of tw-graph.ts, thick edges centred next to thin ones
+// ?graph=tw: the TW section of tw-graph.ts, wide edges centred next to thin ones
 const twElements: ElementDefinition[] = [
   ...TW_NODES.map(([id, x, y]) => ({ data: { id, label: id }, position: { x, y }, classes: 'tw' })),
   ...TW_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}->${t}`, source: s, target: t, q } })),
@@ -183,7 +183,7 @@ $('showOptions').addEventListener('click', () =>
   }));
 cy.on('avoidrouted', (_evt, info: RoutedEventInfo) =>
 {
-  stats.textContent = `${info.edges} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${
+  stats.textContent = `${info.edgeCount} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${
     info.totalMs.toFixed(1)
   } ms`;
 });

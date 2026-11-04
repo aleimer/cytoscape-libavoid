@@ -84,21 +84,21 @@ test('DragTracker follows grab / free / remove and survives a missed free', () =
   try
   {
     const a = cy.$id('a');
-    assert.equal(tracker.active, false);
+    assert.equal(tracker.dragging, false);
     setGrabbed(a, true);
-    assert.equal(tracker.active, true);
+    assert.equal(tracker.dragging, true);
     setGrabbed(a, false); // released without a 'free' event
-    assert.equal(tracker.active, false);
+    assert.equal(tracker.dragging, false);
 
     setGrabbed(a, true);
     a.remove();
-    assert.equal(tracker.active, false, 'removed while grabbed');
+    assert.equal(tracker.dragging, false, 'removed while grabbed');
 
     const b = cy.$id('b');
     setGrabbed(b, true);
     const late = new DragTracker();
     late.reset(cy);
-    assert.equal(late.active, true, 'reset() picks up nodes grabbed before');
+    assert.equal(late.dragging, true, 'reset() picks up nodes grabbed before');
   }
   finally
   {

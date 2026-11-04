@@ -1,4 +1,4 @@
-// The options of `cy.libavoid()` and their defaults.
+/** The options of `cy.libavoid()` and their defaults. */
 
 import type { EdgeSingular } from 'cytoscape';
 import type { Avoid } from '../libavoid/api';
@@ -11,14 +11,15 @@ import type { EdgeStyleOptions } from './route-style';
 
 /**
  * The options after the defaults are applied. `cy.libavoid()` and `setOptions()`
- * take any part of them; only the fields marked `?` have no default.
+ * take any part of them; only the fields marked `?` have no default. The routing
+ * fields are documented on {@link RoutingOptions}.
  */
 export interface LibavoidOptions extends RoutingOptions
 {
   /** URL of libavoid.wasm as served by the app. Not needed in Node.js. Only the first load uses it. */
   wasmUrl?: string | undefined;
   /** An already loaded libavoid instance (`AvoidLib.getInstance()`); skips loading. Not used with `worker`. */
-  avoidLib?: Avoid | undefined;
+  libavoid?: Avoid | undefined;
   /**
    * Route in this Web Worker (running routing.worker.ts) instead of the main thread,
    * so large graphs do not block rendering. The plugin does not terminate it.
@@ -28,7 +29,7 @@ export interface LibavoidOptions extends RoutingOptions
   edges: string;
   /**
    * Selector of the nodes that act as obstacles. Edges to other visible nodes, e.g.
-   * compound nodes, are routed too: they end in the middle of the side facing their
+   * compound nodes, are routed too: they end in the centre of the side facing their
    * other end, and other edges may cross these nodes. Edges between a compound node
    * and a node inside it are not routed.
    * @default 'node:childless'
@@ -37,15 +38,17 @@ export interface LibavoidOptions extends RoutingOptions
   /** Count node labels as part of the obstacle. @default false */
   includeLabels: boolean;
   /**
-   * Stroke width of an edge (px), used to space parallel segments. The default reads
-   * the drawn `width` style, so routing spaces edges as they are drawn.
+   * Stroke width of an edge (px), used to space parallel segments. Called with each
+   * routed edge on every run. The default reads the drawn `width` style, so routing
+   * spaces edges as they are drawn.
    * @default the `width` style
    */
   edgeWidth: (edge: EdgeSingular) => number;
   /**
    * The sides of its nodes an edge may leave from (`source`) and end at (`target`): one
-   * side or a list, missing = all four. E.g. a flow from left to right:
-   * `edge => ({ source: 'right', target: 'left' })`. Read again whenever the graph changes.
+   * side or a list, missing = all four, see {@link EdgeSides}. E.g. a flow from left to
+   * right: `edge => ({ source: 'right', target: 'left' })`. Called with each routed edge
+   * whenever the graph changes.
    */
   edgeSides?: ((edge: EdgeSingular) => EdgeSides | undefined) | undefined;
   /** 0 = sharp corners, > 0 = rounded corners with this radius (px). @default 0 */
@@ -86,7 +89,7 @@ export interface LibavoidOptions extends RoutingOptions
   hideEdgesOnDrag: boolean;
 }
 
-/** Result of the `edgeSides` option. */
+/** Result of the {@link LibavoidOptions.edgeSides} option. */
 export interface EdgeSides
 {
   /** The side(s) of the source node the edge may leave from; missing = all four. */
@@ -99,15 +102,15 @@ export interface EdgeSides
 export interface RoutedEventInfo
 {
   /** Number of routed edges. */
-  edges: number;
+  edgeCount: number;
   /** How long routing took (ms): libavoid plus the post-processing, in this thread or the worker. */
   routingMs: number;
-  /** From the start of the run to the styled edges; with a worker incl. the round trip. */
+  /** From the start of the run to the styled edges (ms); with a worker incl. the round trip. */
   totalMs: number;
 }
 
-/** The defaults of LibavoidOptions, frozen; `cy.libavoid(options)` merges `options` onto them. */
-export const DEFAULTS: Readonly<LibavoidOptions> = Object.freeze({
+/** The defaults of {@link LibavoidOptions}, frozen; `cy.libavoid(options)` merges `options` onto them. */
+export const DEFAULT_OPTIONS: Readonly<LibavoidOptions> = Object.freeze({
   ...DEFAULT_ROUTING_OPTIONS,
   edges: 'edge',
   obstacles: 'node:childless',
@@ -122,10 +125,16 @@ export const DEFAULTS: Readonly<LibavoidOptions> = Object.freeze({
   hideEdgesOnDrag: false,
 });
 
-/** Merges options onto the defaults, checks them and freezes the result; invalid options throw. */
+/**
+ * Merges options onto {@link DEFAULT_OPTIONS}, checks them and freezes the result.
+ *
+ * @param options the values to change, e.g. from `cy.libavoid(options)` or `setOptions()`
+ * @returns the complete options, frozen
+ * @throws {Error} for invalid values, see also {@link resolveRoutingOptions}
+ */
 export function resolveOptions(options: Partial<LibavoidOptions>): Readonly<LibavoidOptions>
 {
-  const resolved = resolveRoutingOptions(DEFAULTS, options);
+  const resolved = resolveRoutingOptions(DEFAULT_OPTIONS, options);
   checkNonNegative('cornerRadius', resolved.cornerRadius);
   checkNonNegative('dragRouteDelay', resolved.dragRouteDelay);
   if (resolved.dragRouteInterval !== 'auto')

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
 import { COLLAPSIBLE_GROUPS, plantModel, plantView } from '../demo/plant-graph';
 import { twModel } from '../demo/tw-graph';
-import { EdgeRouter, loadLibavoid, routeQuality } from '../src';
+import { EdgeRouter, loadLibavoid, measureRoutes } from '../src';
 import type { Avoid, GraphModel, Point } from '../src';
-import { separateOverlaps } from '../src/postprocess/overlap-separator';
+import { separatedRoutes } from '../src/postprocess/overlap-separator';
 import { box, segmentHitsRect } from './helpers';
 
 let avoid: Avoid;
@@ -53,7 +53,7 @@ const twoEdges: GraphModel = {
   ],
 };
 
-test('separateOverlaps spreads stacked segments apart and leaves ends alone that do not overlap', () =>
+test('separatedRoutes spreads stacked segments apart and leaves ends alone that do not overlap', () =>
 {
   const routes = new Map([
     [
@@ -75,7 +75,7 @@ test('separateOverlaps spreads stacked segments apart and leaves ends alone that
       ],
     ],
   ]);
-  const separated = separateOverlaps(routes, twoEdges, 2);
+  const separated = separatedRoutes(routes, twoEdges, 2);
   const [e1, e2] = [separated.get('e1')!, separated.get('e2')!];
   assert.ok(Math.abs(e1[1]!.x - e2[1]!.x) >= 6 + 2 - 1e-9, 'strokes plus spacing apart');
   assert.deepEqual(
@@ -84,11 +84,11 @@ test('separateOverlaps spreads stacked segments apart and leaves ends alone that
   );
   assertOrthogonal(e1);
   assertOrthogonal(e2);
-  assert.equal(routeQuality(separated, twoEdges).overlap, 0);
+  assert.equal(measureRoutes(separated, twoEdges).overlapLength, 0);
   assert.equal(routes.get('e1')![1]!.x, 150, 'the input is not changed');
 });
 
-test('separateOverlaps squeezes into a narrow gap without entering the nodes beside it', () =>
+test('separatedRoutes squeezes into a narrow gap without entering the nodes beside it', () =>
 {
   const model: GraphModel = {
     nodes: [
@@ -109,7 +109,7 @@ test('separateOverlaps squeezes into a narrow gap without entering the nodes bes
       ],
     ]),
   );
-  const separated = separateOverlaps(routes, model, 2);
+  const separated = separatedRoutes(routes, model, 2);
   const xs = ['e1', 'e2', 'e3'].map((id) => separated.get(id)![1]!.x);
   assert.equal(new Set(xs).size, 3, `spread: ${xs}`);
   for (const x of xs)
@@ -119,7 +119,7 @@ test('separateOverlaps squeezes into a narrow gap without entering the nodes bes
   assertNoNodeHits(model, separated);
 });
 
-test('separateOverlaps slides end segments along the node side they end at', () =>
+test('separatedRoutes slides end segments along the node side they end at', () =>
 {
   // both leave a at the pin in the middle of its right side (x = 20, side from y = -15 to 25)
   const route = [
@@ -132,7 +132,7 @@ test('separateOverlaps slides end segments along the node side they end at', () 
     ['e1', route],
     ['e2', route],
   ]);
-  const separated = separateOverlaps(routes, twoEdges, 2);
+  const separated = separatedRoutes(routes, twoEdges, 2);
   const [e1, e2] = [separated.get('e1')!, separated.get('e2')!];
   assert.ok(Math.abs(e1[0]!.y - e2[0]!.y) >= 6 + 2 - 1e-9, `fanned out at a: ${e1[0]!.y} / ${e2[0]!.y}`);
   for (const r of [e1, e2])
@@ -143,10 +143,10 @@ test('separateOverlaps slides end segments along the node side they end at', () 
     assert.ok(r[3]!.y - 3 >= 175 && r[3]!.y + 3 <= 215, `stroke at y = ${r[3]!.y} stays on the side`);
     assertOrthogonal(r);
   }
-  assert.equal(routeQuality(separated, twoEdges).overlap, 0);
+  assert.equal(measureRoutes(separated, twoEdges).overlapLength, 0);
 });
 
-test('separateOverlaps leaves end segments alone that do not end on a node side', () =>
+test('separatedRoutes leaves end segments alone that do not end on a node side', () =>
 {
   // the last point (150, 175) is not on the border of b
   const route = [
@@ -158,7 +158,7 @@ test('separateOverlaps leaves end segments alone that do not end on a node side'
     ['e1', route],
     ['e2', route],
   ]);
-  const separated = separateOverlaps(routes, twoEdges, 2);
+  const separated = separatedRoutes(routes, twoEdges, 2);
   assert.deepEqual([separated.get('e1')![2], separated.get('e2')![2]], [route[2], route[2]]);
 });
 
@@ -196,15 +196,18 @@ function crowdedModel(): GraphModel
   return model;
 }
 
-test('separation and detours reduce overlaps in crowded gaps', () =>
+test('separation and detours reduce overlaps in crowded areas', () =>
 {
   const model = crowdedModel();
-  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowded: false }).route(model);
+  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowdedAreas: false }).route(model);
   const improved = new EdgeRouter(avoid).route(model);
-  const before = routeQuality(plain, model);
-  const after = routeQuality(improved, model);
-  assert.ok(before.overlap > 0, 'the test graph has overlaps to begin with');
-  assert.ok(after.overlap < 0.5 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
+  const before = measureRoutes(plain, model);
+  const after = measureRoutes(improved, model);
+  assert.ok(before.overlapLength > 0, 'the test graph has overlaps to begin with');
+  assert.ok(
+    after.overlapLength < 0.5 * before.overlapLength,
+    `overlap ${before.overlapLength} -> ${after.overlapLength}`,
+  );
   assert.ok(after.crossings < 1.5 * before.crossings + 5, `crossings ${before.crossings} -> ${after.crossings}`);
   for (const route of improved.values())
   {
@@ -216,13 +219,16 @@ test('separation and detours reduce overlaps in crowded gaps', () =>
 test('steel plant: crowded gaps between nodes one grid step apart', () =>
 {
   const model = plantModel();
-  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowded: false }).route(model);
+  const plain = new EdgeRouter(avoid, { separateOverlaps: false, detourCrowdedAreas: false }).route(model);
   const improved = new EdgeRouter(avoid).route(model);
   assert.equal(improved.size, model.edges.length, 'every flow is routed');
-  const before = routeQuality(plain, model);
-  const after = routeQuality(improved, model);
+  const before = measureRoutes(plain, model);
+  const after = measureRoutes(improved, model);
   // libavoid alone stacks ~70,000 px, a few short segments in the narrowest gaps remain
-  assert.ok(after.overlap < 0.01 * before.overlap, `overlap ${before.overlap} -> ${after.overlap}`);
+  assert.ok(
+    after.overlapLength < 0.01 * before.overlapLength,
+    `overlap ${before.overlapLength} -> ${after.overlapLength}`,
+  );
   for (const route of improved.values())
   {
     assertOrthogonal(route);
@@ -299,7 +305,7 @@ const hubEnds = (model: GraphModel, routes: ReadonlyMap<string, readonly Point[]
     }),
   );
 
-test('the thickest edge on a side with three or more edges moves to its centre, starting or ending there', () =>
+test('the widest edge on a side with three or more edges moves to its centre, starting or ending there', () =>
 {
   const cases: Array<[label: string, model: GraphModel]> = [
     ['starting at the hub', hubModel([2, 3, 8, 5])],
@@ -310,7 +316,7 @@ test('the thickest edge on a side with three or more edges moves to its centre, 
   {
     const routes = new EdgeRouter(avoid).route(model);
     const ends = hubEnds(model, routes);
-    assert.equal(ends.get('e2')!.y, 0, `${label}: the thickest (e2) at the centre`);
+    assert.equal(ends.get('e2')!.y, 0, `${label}: the widest (e2) at the centre`);
     const ys = [...ends.values()].map((end) => end.y);
     assert.equal(new Set(ys).size, ys.length, `${label}: ends stay apart: ${ys.join(', ')}`);
     for (const route of routes.values())
@@ -321,22 +327,22 @@ test('the thickest edge on a side with three or more edges moves to its centre, 
   }
 });
 
-test('where the middle slot adds crossings, the thickest edge goes to the centre with the others on one side', () =>
+test('where the middle slot adds crossings, the widest edge goes to the centre with the others on one side', () =>
 {
-  // the thickest edge turns up; in the middle of the fan it would cross the thin edge running straight
+  // the widest edge turns up; in the middle of the fan it would cross the thin edge running straight
   const hub = hubModel([8, 2, 3]);
   const hubRoutes = new EdgeRouter(avoid).route(hub);
   const ends = hubEnds(hub, hubRoutes);
   assert.equal(ends.get('e0')!.y, 0);
   assert.ok(ends.get('e1')!.y > 0 && ends.get('e2')!.y > ends.get('e1')!.y, `others below: ${[...ends.values()]}`);
-  assert.equal(routeQuality(hubRoutes, hub).crossings, 0);
+  assert.equal(measureRoutes(hubRoutes, hub).crossings, 0);
 
-  // from a screenshot: the thick WBB edges arrive where the thin TW-FL <-> TW-D edges leave
+  // from a screenshot: the wide WBB edges arrive where the thin TW-FL <-> TW-D edges leave
   const tw = twModel();
   const twRoutes = new EdgeRouter(avoid).route(tw);
-  assert.equal(twRoutes.get('WBB->TW-FL')!.at(-1)!.x, 600, 'thick edge at the centre of TW-FL');
-  assert.equal(twRoutes.get('WBB->TW-D')!.at(-1)!.x, 600, 'thick edge at the centre of TW-D');
-  assert.equal(routeQuality(twRoutes, tw).crossings, 0);
+  assert.equal(twRoutes.get('WBB->TW-FL')!.at(-1)!.x, 600, 'wide edge at the centre of TW-FL');
+  assert.equal(twRoutes.get('WBB->TW-D')!.at(-1)!.x, 600, 'wide edge at the centre of TW-D');
+  assert.equal(measureRoutes(twRoutes, tw).crossings, 0);
   // and the thin edges right next to them, not spread over the side as libavoid has them
   const strokes = ['WBB->TW-D', 'TW-FL->TW-D', 'TW-D->TW-FL'].map((id) => ({
     x: twRoutes.get(id)!.at(-1)!.x,
@@ -352,7 +358,7 @@ test('where the middle slot adds crossings, the thickest edge goes to the centre
 test('the order of nodes and edges does not change the routes', () =>
 {
   // from the demo: with the WBB edges after the thin TW-FL <-> TW-D ones, the thin edges
-  // were packed around WBB->TW-FL at TW-FL and reached into the thicker WBB->TW-D at TW-D
+  // were packed around WBB->TW-FL at TW-FL and reached into the wider WBB->TW-D at TW-D
   for (const [label, model] of [['tw', twModel()], ['plant', plantModel()]] as const)
   {
     const routes = new EdgeRouter(avoid).route(model);
@@ -362,12 +368,12 @@ test('the order of nodes and edges does not change the routes', () =>
     });
     assert.deepEqual(reversed, routes, label);
   }
-  assert.equal(routeQuality(new EdgeRouter(avoid).route(twModel()), twModel()).overlap, 0);
+  assert.equal(measureRoutes(new EdgeRouter(avoid).route(twModel()), twModel()).overlapLength, 0);
 });
 
-test('three edges between two offset nodes are packed around the thickest, also mixed directions', () =>
+test('three edges between two offset nodes are packed around the widest, also mixed directions', () =>
 {
-  // libavoid spreads the ends over the side; the thickest one turned into the node
+  // libavoid spreads the ends over the side; the widest one turned into the node
   // right below it (too close to it to move) or lay outermost, where the packed fan
   // with it at the centre does not fit
   const cases: Array<[widths: number[], reversed: boolean[], maxOffCentre: number]> = [
@@ -399,20 +405,20 @@ test('three edges between two offset nodes are packed around the thickest, also 
       })
       .sort((a, b) => a.y - b.y);
     const label = `widths ${widths}`;
-    const thickest = ends.find((end) => end.width === Math.max(...widths))!;
-    assert.ok(Math.abs(thickest.y) <= maxOffCentre, `${label}: thickest at ${thickest.y}`);
+    const widest = ends.find((end) => end.width === Math.max(...widths))!;
+    assert.ok(Math.abs(widest.y) <= maxOffCentre, `${label}: widest at ${widest.y}`);
     for (let i = 1; i < ends.length; i++)
     {
       const gap = ends[i]!.y - ends[i - 1]!.y - (ends[i]!.width + ends[i - 1]!.width) / 2;
       assert.ok(gap >= 0 && gap <= 3, `${label}: gap between neighbouring strokes: ${gap} px`);
     }
-    assert.equal(routeQuality(routes, model).crossings, 0, label);
+    assert.equal(measureRoutes(routes, model).crossings, 0, label);
   }
 });
 
-test('centring the thickest edge pushes no thin edge across thick ones', () =>
+test('centring the widest edge pushes no thin edge across wide ones', () =>
 {
-  // from a screenshot: centring the thick WBB edges pushed a thin edge across both of them
+  // from a screenshot: centring the wide WBB edges pushed a thin edge across both of them
   const plant: GraphModel = {
     nodes: [
       { id: 'WBB', x: 200, y: 790, width: 290, height: 290 },
@@ -429,7 +435,7 @@ test('centring the thickest edge pushes no thin edge across thick ones', () =>
       { id: 'D-KW', source: 'TW-D', target: 'KW-X', width: 28 },
     ],
   };
-  assert.ok(routeQuality(new EdgeRouter(avoid).route(plant), plant).crossings <= 1);
+  assert.ok(measureRoutes(new EdgeRouter(avoid).route(plant), plant).crossings <= 1);
 });
 
 test("two edges on a node side keep libavoid's fan", () =>

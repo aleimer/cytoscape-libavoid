@@ -1,4 +1,4 @@
-// The plugin's side of routing in a Web Worker.
+/** The plugin's side of routing in a Web Worker. */
 
 import { pickRoutingOptions } from '../routing/options';
 import type { RoutingOptions } from '../routing/options';
@@ -12,18 +12,27 @@ let lastRequestId = 0;
 
 /**
  * Sends routing requests to a worker running routing.worker.ts: the
- * asynchronous counterpart of EdgeRouter. Answers are matched by request id.
+ * asynchronous counterpart of `EdgeRouter`. Answers are matched by request id.
  */
 export class WorkerRouter implements RoutingBackend
 {
+  /** Always false: the worker routes in its own thread. */
   readonly blocksThread = false;
+  /** The worker the requests go to; it may be shared with other WorkerRouters. */
   private readonly worker: RoutingWorker;
+  /** Sent with every request; only the worker's first request loads it. */
   private readonly wasmUrl: string | undefined;
   /** The unanswered requests by id. */
   private readonly pending = new Map<number, PromiseWithCallbacks<RouteResult>>();
+  /** Set by {@link WorkerRouter.dispose}; later requests reject. */
   private disposed = false;
 
-  /** @param wasmUrl absolute URL of libavoid.wasm (the worker resolves relative ones against its script) */
+  /**
+   * Starts listening to the worker's answers and errors.
+   *
+   * @param worker  a worker running routing.worker.ts
+   * @param wasmUrl absolute URL of libavoid.wasm (the worker resolves relative ones against its script)
+   */
   constructor(worker: RoutingWorker, wasmUrl?: string | undefined)
   {
     this.worker = worker;
@@ -39,7 +48,14 @@ export class WorkerRouter implements RoutingBackend
     return this.pending.size > 0;
   }
 
-  /** Rejects with the worker's error message if routing fails there. */
+  /**
+   * Sends a graph model to the worker.
+   *
+   * @param model   the graph to route
+   * @param options only the routing options are posted, see {@link pickRoutingOptions}
+   * @returns the worker's routes; rejects with the worker's error message if routing
+   *   fails there, or if this router is disposed
+   */
   route(model: GraphModel, options: RoutingOptions): Promise<RouteResult>
   {
     if (this.disposed)
@@ -64,6 +80,11 @@ export class WorkerRouter implements RoutingBackend
     this.rejectAll(pluginError('worker router disposed'));
   }
 
+  /**
+   * Rejects every unanswered request and forgets them.
+   *
+   * @param error the reason they all get
+   */
   private rejectAll(error: Error): void
   {
     for (const answer of this.pending.values())
@@ -74,9 +95,11 @@ export class WorkerRouter implements RoutingBackend
   }
 
   /**
-   * `error` / `messageerror`: rejects every request in flight, as the event does not
-   * say which one failed. Without this a worker that failed to load would leave the
-   * requests, and with them the plugin, waiting forever.
+   * For `error` / `messageerror`: rejects every request in flight, as the event does
+   * not say which one failed. Without this a worker that failed to load would leave
+   * the requests, and with them the plugin, waiting forever.
+   *
+   * @param event the worker's error event; its message, if any, goes into the rejection
    */
   private readonly onError = (event: Event): void =>
   {
@@ -84,6 +107,12 @@ export class WorkerRouter implements RoutingBackend
     this.rejectAll(pluginError(`the routing worker failed (${event.type})${detail}`));
   };
 
+  /**
+   * For `message`: settles the request the answer belongs to; answers to other
+   * WorkerRouters sharing the worker are ignored.
+   *
+   * @param event the worker's answer
+   */
   private readonly onMessage = (event: MessageEvent<RouteResponse>): void =>
   {
     const response = event.data;
@@ -104,15 +133,22 @@ export class WorkerRouter implements RoutingBackend
   };
 }
 
-/** A promise together with the callbacks that settle it, see promiseWithCallbacks(). */
+/** A promise together with the callbacks that settle it, see {@link promiseWithCallbacks}. */
 interface PromiseWithCallbacks<T>
 {
+  /** Settles once one of the callbacks is called. */
   promise: Promise<T>;
+  /** @param value fulfils {@link PromiseWithCallbacks.promise} with it */
   resolve(value: T): void;
+  /** @param error rejects {@link PromiseWithCallbacks.promise} with it */
   reject(error: unknown): void;
 }
 
-// like Promise.withResolvers(), which needs ES2024
+/**
+ * A new promise with its callbacks; like `Promise.withResolvers()`, which needs ES2024.
+ *
+ * @returns the pending promise and the callbacks that settle it
+ */
 function promiseWithCallbacks<T>(): PromiseWithCallbacks<T>
 {
   let resolve!: (value: T) => void;
