@@ -117,7 +117,8 @@ export class RouteGeometry
   /**
    * Where a segment may be placed along its axis without entering a node, without
    * reversing its neighbouring segments and without passing the ones beyond them.
-   * End segments also stay on the side of their node. Fixed segments stay where they are.
+   * End segments also stay on the side of their node. Fixed segments stay where they are;
+   * one already closer to a node than the margin may only move away from it.
    */
   freeInterval(segment: Segment): [number, number]
   {
@@ -176,9 +177,14 @@ export class RouteGeometry
       {
         high = Math.min(high, nodeLow);
       }
+      // already closer than the margin: it may only move away from the node
+      else if (node[axis] > position)
+      {
+        high = Math.min(high, position);
+      }
       else
       {
-        return [position, position]; // already closer than the margin: leave it
+        low = Math.max(low, position);
       }
     }
     return [low, high];

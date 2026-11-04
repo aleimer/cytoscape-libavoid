@@ -28,7 +28,8 @@ import type { Segment, SegmentEnd } from './segment';
 const MIN_ENDS = 3;
 /**
  * A fan that does not fit on the side is squeezed in steps of 1/SQUEEZE_STEPS
- * of its pitches, down to MIN_SQUEEZE_STEPS of them; below that the side stays as it is.
+ * of its pitches, down to MIN_SQUEEZE_STEPS of them; below that the full fan is
+ * shifted off the centre as little as needed to fit, see shiftedFan().
  */
 const SQUEEZE_STEPS = 10;
 const MIN_SQUEEZE_STEPS = 2;
@@ -43,8 +44,8 @@ interface SideEnd
 /**
  * Reorders the edges on every node side that at least MIN_ENDS of them start or
  * end at, so the thickest attaches at the centre of the side; changes `geometry`
- * in place. Sides whose ends are not fanned out, where even the squeezed fan
- * does not fit or where every slot for the thickest adds crossings stay as they are. Separate overlaps afterwards, see the top of the file.
+ * in place. Sides whose ends are not fanned out, where no fan fits, not even
+ * squeezed or shifted, or where every slot for the thickest adds crossings stay as they are. Separate overlaps afterwards, see the top of the file.
  *
  * @param spacing gap kept between neighbouring strokes (px)
  */
@@ -146,26 +147,60 @@ function centreThickest(
   const overlapBefore = overlapOf(geometry, fan);
   const previous = fan.map((segment) => segment.position);
 
-  for (const slot of slots)
+  // where no fan fits with the thickest at the centre, one shifted towards the room there is
+  for (const fanOf of [fittingFan, shiftedFan])
   {
-    const order = [...others];
-    order.splice(slot, 0, thickest);
-    const packed = fittingFan(geometry, order, slot, centre, spacing);
-    if (!packed)
+    for (const slot of slots)
     {
-      continue;
-    }
-    const loose = loosenedFan(order, slot, packed);
-    for (const positions of fits(geometry, order, loose) ? [packed, loose] : [packed])
-    {
-      order.forEach((segment, i) => geometry.move(segment, positions[i]!));
-      if (crossingsOf(geometry, affected) <= crossingsBefore && overlapOf(geometry, fan) <= overlapBefore)
+      const order = [...others];
+      order.splice(slot, 0, thickest);
+      const packed = fanOf(geometry, order, slot, centre, spacing);
+      if (!packed)
       {
-        return;
+        continue;
       }
-      fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
+      const loose = loosenedFan(order, slot, packed);
+      for (const positions of fits(geometry, order, loose) ? [packed, loose] : [packed])
+      {
+        order.forEach((segment, i) => geometry.move(segment, positions[i]!));
+        if (crossingsOf(geometry, affected) <= crossingsBefore && overlapOf(geometry, fan) <= overlapBefore)
+        {
+          return;
+        }
+        fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
+      }
     }
   }
+}
+
+/**
+ * The full packed fan with slot `slot` at `centre`, shifted as little as needed
+ * to fit in the free intervals, e.g. away from the node the inner edges of the
+ * fan turn into; undefined if it does not fit anywhere.
+ */
+function shiftedFan(
+  geometry: RouteGeometry,
+  order: readonly Segment[],
+  slot: number,
+  centre: number,
+  spacing: number,
+): number[] | undefined
+{
+  const positions = fanPositions(pitchesOf(order, spacing), slot, centre, 1);
+  let low = -Infinity;
+  let high = Infinity;
+  order.forEach((segment, i) =>
+  {
+    const [free, to] = geometry.freeInterval(segment);
+    low = Math.max(low, free - positions[i]!);
+    high = Math.min(high, to - positions[i]!);
+  });
+  if (low > high)
+  {
+    return undefined;
+  }
+  const shift = Math.min(Math.max(0, low), high);
+  return positions.map((position) => position + shift);
 }
 
 /**
@@ -213,7 +248,7 @@ function fittingFan(
   spacing: number,
 ): number[] | undefined
 {
-  const pitches = order.slice(1).map((segment, i) => (order[i]!.width + segment.width) / 2 + spacing);
+  const pitches = pitchesOf(order, spacing);
   for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
   {
     const positions = fanPositions(pitches, slot, centre, steps / SQUEEZE_STEPS);
@@ -241,6 +276,12 @@ function crossingsOf(geometry: RouteGeometry, segments: ReadonlySet<Segment>): n
     }
   }
   return crossings;
+}
+
+/** Distances between neighbouring segments of a packed fan: their strokes `spacing` apart. */
+function pitchesOf(order: readonly Segment[], spacing: number): number[]
+{
+  return order.slice(1).map((segment, i) => (order[i]!.width + segment.width) / 2 + spacing);
 }
 
 /** Length along which these segments overlap segments of other edges. */

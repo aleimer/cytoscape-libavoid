@@ -517,8 +517,10 @@ quer über dicke schieben, die aus derselben Richtung kommen, oder eine dünne
 Kante zwischen zwei Knoten am anderen Knoten in eine dickere hineinschieben),
 bleibt libavoids Reihenfolge;
 auf den Bench-Graphen gilt das für etwa die Hälfte der Seiten. Passt der Fächer nicht auf die
-Seite, wird er enger zusammengeschoben; passt er auch dann nicht, bleibt die
-Seite, wie sie ist. Knicke, die dadurch direkt am Knoten übereinanderliegen,
+Seite, wird er enger zusammengeschoben; passt er auch dann nicht, wird der
+dicht gepackte Fächer so wenig wie möglich aus der Mitte verschoben (etwa weg
+vom Knoten, in den die inneren Kanten abbiegen). Nur wenn auch das nicht passt,
+bleibt die Seite, wie sie ist. Knicke, die dadurch direkt am Knoten übereinanderliegen,
 schiebt `separateOverlaps` danach noch einmal auseinander. Bei gleich dicken
 Kanten ändert sich nichts.
 

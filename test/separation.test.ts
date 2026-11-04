@@ -365,6 +365,51 @@ test('the order of nodes and edges does not change the routes', () =>
   assert.equal(routeQuality(new EdgeRouter(avoid).route(twModel()), twModel()).overlap, 0);
 });
 
+test('three edges between two offset nodes are packed around the thickest, also mixed directions', () =>
+{
+  // libavoid spreads the ends over the side; the thickest one turned into the node
+  // right below it (too close to it to move) or lay outermost, where the packed fan
+  // with it at the centre does not fit
+  const cases: Array<[widths: number[], reversed: boolean[], maxOffCentre: number]> = [
+    [[4, 4, 40], [false, false, false], 0],
+    [[4, 40, 4], [false, true, true], 0],
+    [[40, 10, 20], [false, false, false], 10],
+    [[20, 10, 40], [true, false, true], 10],
+  ];
+  for (const [widths, reversed, maxOffCentre] of cases)
+  {
+    const model: GraphModel = {
+      nodes: [
+        { id: 'A', x: 0, y: 0, width: 200, height: 200 },
+        { id: 'B', x: 600, y: 150, width: 200, height: 200 },
+      ],
+      edges: widths.map((width, i) => ({
+        id: `e${i}`,
+        source: reversed[i] ? 'B' : 'A',
+        target: reversed[i] ? 'A' : 'B',
+        width,
+      })),
+    };
+    const routes = new EdgeRouter(avoid).route(model);
+    const ends = model.edges
+      .map((edge) =>
+      {
+        const route = routes.get(edge.id)!;
+        return { y: (edge.source === 'A' ? route[0]! : route.at(-1)!).y, width: edge.width! };
+      })
+      .sort((a, b) => a.y - b.y);
+    const label = `widths ${widths}`;
+    const thickest = ends.find((end) => end.width === Math.max(...widths))!;
+    assert.ok(Math.abs(thickest.y) <= maxOffCentre, `${label}: thickest at ${thickest.y}`);
+    for (let i = 1; i < ends.length; i++)
+    {
+      const gap = ends[i]!.y - ends[i - 1]!.y - (ends[i]!.width + ends[i - 1]!.width) / 2;
+      assert.ok(gap >= 0 && gap <= 3, `${label}: gap between neighbouring strokes: ${gap} px`);
+    }
+    assert.equal(routeQuality(routes, model).crossings, 0, label);
+  }
+});
+
 test('centring the thickest edge pushes no thin edge across thick ones', () =>
 {
   // from a screenshot: centring the thick WBB edges pushed a thin edge across both of them
