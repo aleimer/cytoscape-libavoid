@@ -1,6 +1,6 @@
 {
   "name": "cytoscape-libavoid",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Cytoscape.js extension: obstacle-avoiding orthogonal edge routing with libavoid (WebAssembly)",
   "homepage": "https://github.com/pkabalski/cytoscape-libavoid#readme",

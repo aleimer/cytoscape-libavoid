@@ -1,6 +1,6 @@
 # cytoscape-libavoid – Lizenzrechtliche Hinweise
 
-Stand: 04.11.2026 · gilt für cytoscape-libavoid 1.0.0 (TypeScript-Quellen in `src/`) mit libavoid-js 0.5.0-beta.5
+Stand: 04.11.2026 · gilt für cytoscape-libavoid 1.0.1 (TypeScript-Quellen in `src/`) mit libavoid-js 0.5.0-beta.5
 
 > **Keine Rechtsberatung.** Dieses Dokument fasst die Lizenzlage aus
 > technischer Sicht zusammen und zeigt, was im Projekt zu beachten ist. Vor

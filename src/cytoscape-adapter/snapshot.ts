@@ -1,30 +1,30 @@
 /** Reads the routing input from a Cytoscape graph. */
 
-import type { Core, EdgeSingular, NodeSingular } from 'cytoscape';
-import { isSide, SIDES } from '../shared/geometry';
-import type { Point, Side } from '../shared/geometry';
-import type { GraphEdge, GraphModel, GraphNode } from '../shared/graph';
-import type { LibavoidOptions } from './options';
+import type { BoundingBox12, BoundingBoxWH, Core, EdgeSingular, NodeSingular, Position } from "cytoscape";
+import { isSide, SIDES } from "../shared/geometry";
+import type { Point, Side } from "../shared/geometry";
+import type { GraphEdge, GraphModel, GraphNode } from "../shared/graph";
+import type { EdgeSides, LibavoidOptions } from "./options";
 
 /** The routing input at one moment. */
 export interface Snapshot
 {
-  /** The graph to route, see {@link readModel}. */
-  model: GraphModel;
-  /** The model serialised: a run is skipped if it equals the last run's. */
-  modelKey: string;
-  /**
-   * Cytoscape's position of every node in the model. The routes are anchored
-   * relative to these, so routes that arrive late (from a worker) still start and
-   * end at their nodes.
-   */
-  nodePositions: Map<string, Point>;
-  /** Taken while a node is dragged: routing it may skip slow steps (a draft). */
-  draft: boolean;
+    /** The graph to route, see {@link readModel}. */
+    model: GraphModel;
+    /** The model serialised: a run is skipped if it equals the last run's. */
+    modelKey: string;
+    /**
+     * Cytoscape's position of every node in the model. The routes are anchored
+     * relative to these, so routes that arrive late (from a worker) still start and
+     * end at their nodes.
+     */
+    nodePositions: Map<string, Point>;
+    /** Taken while a node is dragged: routing it may skip slow steps (a draft). */
+    draft: boolean;
 }
 
 /** The options {@link readModel} uses. */
-export type ModelOptions = Pick<LibavoidOptions, 'edges' | 'obstacles' | 'includeLabels' | 'edgeWidth' | 'edgeSides'>;
+export type ModelOptions = Pick<LibavoidOptions, "edges" | "obstacles" | "includeLabels" | "edgeWidth" | "edgeSides">;
 
 /**
  * The routing input now: the model, serialised for comparison, and the node positions.
@@ -36,9 +36,9 @@ export type ModelOptions = Pick<LibavoidOptions, 'edges' | 'obstacles' | 'includ
  */
 export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): Snapshot
 {
-  const nodePositions = new Map<string, Point>();
-  const model = readModel(cy, options, nodePositions);
-  return { model, modelKey: JSON.stringify(model), nodePositions, draft };
+    const nodePositions: Map<string, Point> = new Map<string, Point>();
+    const model: GraphModel = readModel(cy, options, nodePositions);
+    return { model, modelKey: JSON.stringify(model), nodePositions, draft };
 }
 
 /**
@@ -54,30 +54,30 @@ export function takeSnapshot(cy: Core, options: ModelOptions, draft: boolean): S
  */
 export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<string, Point> = new Map()): GraphModel
 {
-  const obstacles = cy
-    .nodes(options.obstacles)
-    .toArray() // Collection.filter() loses the element type
-    .filter((node) => node.visible());
-  const edges = cy.edges(options.edges).toArray().filter(isRoutable);
-  const obstacleIds = new Set(obstacles.map((node) => node.id()));
-  const endpoints = edges
-    .flatMap((edge) => [edge.source(), edge.target()])
-    .filter((node) => !obstacleIds.has(node.id()));
+    const obstacles: NodeSingular[] = cy
+        .nodes(options.obstacles)
+        .toArray() // Collection.filter() loses the element type
+        .filter((node: NodeSingular) => node.visible());
+    const edges: EdgeSingular[] = cy.edges(options.edges).toArray().filter(isRoutable);
+    const obstacleIds: Set<string> = new Set(obstacles.map((node: NodeSingular) => node.id()));
+    const endpoints: NodeSingular[] = edges
+        .flatMap((edge: EdgeSingular) => [edge.source(), edge.target()])
+        .filter((node: NodeSingular) => !obstacleIds.has(node.id()));
 
-  // the model node of a Cytoscape node; also records its position
-  const toNode = (node: NodeSingular, obstacle: boolean): GraphNode =>
-  {
-    const { x, y } = node.position();
-    nodePositions.set(node.id(), { x, y });
-    return graphNodeOf(node, obstacle, options.includeLabels);
-  };
-  return {
-    nodes: [
-      ...obstacles.map((node) => toNode(node, true)),
-      ...uniqueById(endpoints).map((node) => toNode(node, false)),
-    ],
-    edges: edges.map((edge) => graphEdgeOf(edge, options)),
-  };
+    // the model node of a Cytoscape node; also records its position
+    const toNode: (node: NodeSingular, obstacle: boolean) => GraphNode = (node: NodeSingular, obstacle: boolean): GraphNode =>
+    {
+        const { x, y }: Position = node.position();
+        nodePositions.set(node.id(), { x, y });
+        return graphNodeOf(node, obstacle, options.includeLabels);
+    };
+    return {
+        nodes: [
+            ...obstacles.map((node: NodeSingular) => toNode(node, true)),
+            ...uniqueById(endpoints).map((node: NodeSingular) => toNode(node, false)),
+        ],
+        edges: edges.map((edge: EdgeSingular) => graphEdgeOf(edge, options)),
+    };
 }
 
 /**
@@ -88,15 +88,15 @@ export function readModel(cy: Core, options: ModelOptions, nodePositions: Map<st
  */
 function isRoutable(edge: EdgeSingular): boolean
 {
-  const source = edge.source();
-  const target = edge.target();
-  return (
-    edge.visible() &&
-    source.visible() &&
-    target.visible() &&
-    !source.ancestors().anySame(target) &&
-    !target.ancestors().anySame(source)
-  );
+    const source: NodeSingular = edge.source();
+    const target: NodeSingular = edge.target();
+    return (
+        edge.visible() &&
+        source.visible() &&
+        target.visible() &&
+        !source.ancestors().anySame(target) &&
+        !target.ancestors().anySame(source)
+    );
 }
 
 /**
@@ -109,9 +109,9 @@ function isRoutable(edge: EdgeSingular): boolean
  */
 function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boolean): GraphNode
 {
-  const box = node.boundingBox({ includeLabels, includeOverlays: false });
-  const centre = { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
-  return { id: node.id(), ...centre, width: box.w, height: box.h, ...(obstacle ? {} : { obstacle: false }) };
+    const box: BoundingBox12 & BoundingBoxWH = node.boundingBox({ includeLabels, includeOverlays: false });
+    const centre: Point = { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
+    return { id: node.id(), ...centre, width: box.w, height: box.h, ...(obstacle ? {} : { obstacle: false }) };
 }
 
 /**
@@ -123,18 +123,18 @@ function graphNodeOf(node: NodeSingular, obstacle: boolean, includeLabels: boole
  */
 function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge
 {
-  const sides = options.edgeSides?.(edge);
-  const sourceSides = restrictedSides(sides?.source);
-  const targetSides = restrictedSides(sides?.target);
-  // left out rather than undefined when all four are allowed: the model is serialised for the modelKey
-  return {
-    id: edge.id(),
-    source: edge.source().id(),
-    target: edge.target().id(),
-    width: Number(options.edgeWidth(edge)) || 0,
-    ...(sourceSides && { sourceSides }),
-    ...(targetSides && { targetSides }),
-  };
+    const sides: EdgeSides | undefined = options.edgeSides?.(edge);
+    const sourceSides: Side[] | undefined = restrictedSides(sides?.source);
+    const targetSides: Side[] | undefined = restrictedSides(sides?.target);
+    // left out rather than undefined when all four are allowed: the model is serialised for the modelKey
+    return {
+        id: edge.id(),
+        source: edge.source().id(),
+        target: edge.target().id(),
+        width: Number(options.edgeWidth(edge)) || 0,
+        ...(sourceSides && { sourceSides }),
+        ...(targetSides && { targetSides }),
+    };
 }
 
 /**
@@ -145,8 +145,8 @@ function graphEdgeOf(edge: EdgeSingular, options: ModelOptions): GraphEdge
  */
 function restrictedSides(sides: Side | readonly Side[] | undefined): Side[] | undefined
 {
-  const valid = [...new Set(typeof sides === 'string' ? [sides] : (sides ?? []))].filter(isSide);
-  return valid.length && valid.length < SIDES.length ? valid : undefined;
+    const valid: Side[] = [...new Set(typeof sides === "string" ? [sides] : (sides ?? []))].filter(isSide);
+    return valid.length && valid.length < SIDES.length ? valid : undefined;
 }
 
 /**
@@ -155,6 +155,6 @@ function restrictedSides(sides: Side | readonly Side[] | undefined): Side[] | un
  * @param nodes Cytoscape nodes, maybe repeated
  * @returns each node once, in the order of its first appearance
  */
-const uniqueById = (nodes: NodeSingular[]): NodeSingular[] => [
-  ...new Map(nodes.map((node) => [node.id(), node])).values(),
+const uniqueById: (nodes: NodeSingular[]) => NodeSingular[] = (nodes: NodeSingular[]): NodeSingular[] => [
+    ...new Map(nodes.map((node: NodeSingular) => [node.id(), node])).values(),
 ];

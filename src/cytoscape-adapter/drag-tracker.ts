@@ -3,59 +3,59 @@
  * graph on every change event.
  */
 
-import type { Core, EventObject, NodeSingular } from 'cytoscape';
+import type { Core, EventObject, NodeSingular } from "cytoscape";
 
 /** The grabbed nodes, kept up to date from `grab`, `free` and `remove` events. */
 export class DragTracker
 {
-  /** The nodes grabbed now, as far as the events tell. */
-  private readonly grabbed = new Set<NodeSingular>();
+    /** The nodes grabbed now, as far as the events tell. */
+    private readonly grabbed: Set<NodeSingular> = new Set<NodeSingular>();
 
-  /**
-   * Starts with the nodes grabbed now, e.g. when listening starts during a drag.
-   *
-   * @param cy the graph to read the grabbed nodes from
-   */
-  reset(cy: Core): void
-  {
-    this.grabbed.clear();
-    for (const node of cy.nodes(':grabbed').toArray())
+    /** True while a node is grabbed. Re-checks the tracked nodes, so a missed `free` does not stick. */
+    get dragging(): boolean
     {
-      this.grabbed.add(node);
+        for (const node of this.grabbed)
+        {
+            if (!node.removed() && node.grabbed())
+            {
+                return true;
+            }
+            this.grabbed.delete(node);
+        }
+        return false;
     }
-  }
 
-  /** True while a node is grabbed. Re-checks the tracked nodes, so a missed `free` does not stick. */
-  get dragging(): boolean
-  {
-    for (const node of this.grabbed)
+    /**
+     * Starts with the nodes grabbed now, e.g. when listening starts during a drag.
+     *
+     * @param cy the graph to read the grabbed nodes from
+     */
+    reset(cy: Core): void
     {
-      if (!node.removed() && node.grabbed())
-      {
-        return true;
-      }
-      this.grabbed.delete(node);
+        this.grabbed.clear();
+        for (const node of cy.nodes(":grabbed").toArray())
+        {
+            this.grabbed.add(node);
+        }
     }
-    return false;
-  }
 
-  /**
-   * Listener for `grab`.
-   *
-   * @param event its target is the grabbed node
-   */
-  readonly onGrab = (event: EventObject): void =>
-  {
-    this.grabbed.add(event.target as NodeSingular);
-  };
+    /**
+     * Listener for `grab`.
+     *
+     * @param event its target is the grabbed node
+     */
+    readonly onGrab: (event: EventObject) => void = (event: EventObject): void =>
+    {
+        this.grabbed.add(event.target as NodeSingular);
+    };
 
-  /**
-   * Listener for `free` and `remove`.
-   *
-   * @param event its target is the released or removed node
-   */
-  readonly onRelease = (event: EventObject): void =>
-  {
-    this.grabbed.delete(event.target as NodeSingular);
-  };
+    /**
+     * Listener for `free` and `remove`.
+     *
+     * @param event its target is the released or removed node
+     */
+    readonly onRelease: (event: EventObject) => void = (event: EventObject): void =>
+    {
+        this.grabbed.delete(event.target as NodeSingular);
+    };
 }

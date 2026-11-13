@@ -1,18 +1,27 @@
 {
-  "lineWidth": 120,
+  "lineWidth": 128,
   "indentWidth": 2,
   "typescript": {
-    "quoteStyle": "preferSingle",
+    "quoteStyle": "preferDouble",
     "semiColons": "always",
     "trailingCommas": "onlyMultiLine",
     "operatorPosition": "sameLine",
     "arrowFunction.useParentheses": "force",
     "bracePosition": "nextLine",
     "useBraces": "always",
-    "nextControlFlowPosition": "nextLine"
+    "nextControlFlowPosition": "nextLine",
+    "indentWidth": 4
   },
-  "json": {},
-  "excludes": ["node_modules", "demo/build", "bench/angular", "package-lock.json"],
+  "json": {
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "excludes": [
+    "node_modules",
+    "demo/build",
+    "bench/angular",
+    "package-lock.json"
+  ],
   "plugins": [
     "npm:@dprint/typescript@0.96.1",
     "npm:@dprint/json@0.25.2"

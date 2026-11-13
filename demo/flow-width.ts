@@ -11,9 +11,9 @@ const MIN_WIDTH = 3;
  */
 export function flowWidth(quantity: number, maxQuantity: number, maxWidth: number): number
 {
-  const share = maxQuantity > 0 ? Math.min(1, Math.max(0, quantity) / maxQuantity) : 0;
-  return Math.round((MIN_WIDTH + (maxWidth - MIN_WIDTH) * Math.sqrt(share)) * 10) / 10;
+    const share = maxQuantity > 0 ? Math.min(1, Math.max(0, quantity) / maxQuantity) : 0;
+    return Math.round((MIN_WIDTH + (maxWidth - MIN_WIDTH) * Math.sqrt(share)) * 10) / 10;
 }
 
 /** A quantity as a label, e.g. `5.600 t`. */
-export const flowLabel = (quantity: number): string => `${quantity.toLocaleString('de-DE')} t`;
+export const flowLabel = (quantity: number): string => `${quantity.toLocaleString("de-DE")} t`;

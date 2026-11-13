@@ -1,247 +1,247 @@
-import cytoscape from 'cytoscape';
-import assert from 'node:assert/strict';
-import { before, test } from 'node:test';
-import register, { DEFAULT_ROUTING_OPTIONS, WorkerRouter } from '../src';
-import type { GraphModel } from '../src';
-import { countRoutes, createCy, InProcessWorker, obstacleElements, wait } from './helpers';
+import cytoscape from "cytoscape";
+import assert from "node:assert/strict";
+import { before, test } from "node:test";
+import register, { DEFAULT_ROUTING_OPTIONS, WorkerRouter } from "../src";
+import type { GraphModel } from "../src";
+import { countRoutes, createCy, InProcessWorker, obstacleElements, wait } from "./helpers";
 
 before(() => register(cytoscape));
 
-test('with a worker, routes are computed there and applied to the edges', async () =>
+test("with a worker, routes are computed there and applied to the edges", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker, edgeSpacing: 6, cornerRadius: 4 });
-  try
-  {
-    await routing.ready;
-    assert.equal(worker.requests.length, 1);
-    assert.equal(worker.requests[0].options.edgeSpacing, 6, 'routing options are sent along');
-    assert.equal(cy.$id('ab').style('curve-style'), 'round-segments');
-    assert.ok((routing.getRoute('ab')?.length ?? 0) >= 4, 'routed around c');
-
-    cy.$id('c').position({ x: 150, y: 300 });
-    await wait(40);
-    assert.equal(routing.getRoute('ab')?.length, 2, 'live re-route through the worker');
-  }
-  finally
-  {
-    cy.destroy();
-  }
-});
-
-test('with a worker, changes during a request are sent once it is answered', async () =>
-{
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker });
-  const routes = countRoutes(cy);
-  try
-  {
-    await routing.ready;
-    worker.delayMs = 60;
-    const c = cy.$id('c');
-    for (const y of [20, 40, 60, 80, 300])
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker, edgeSpacing: 6, cornerRadius: 4 });
+    try
     {
-      c.position({ x: 150, y });
-      await wait(10);
+        await routing.ready;
+        assert.equal(worker.requests.length, 1);
+        assert.equal(worker.requests[0].options.edgeSpacing, 6, "routing options are sent along");
+        assert.equal(cy.$id("ab").style("curve-style"), "round-segments");
+        assert.ok((routing.getRoute("ab")?.length ?? 0) >= 4, "routed around c");
+
+        cy.$id("c").position({ x: 150, y: 300 });
+        await wait(40);
+        assert.equal(routing.getRoute("ab")?.length, 2, "live re-route through the worker");
     }
-    await wait(250);
-    assert.equal(worker.requests.length, 3, 'initial, first move, then the latest state');
-    assert.equal(worker.requests[2].model.nodes.find((node) => node.id === 'c')?.y, 300);
-    assert.equal(routing.getRoute('ab')?.length, 2, 'ends with the final position');
-    assert.equal(routes.count, 3);
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('with a worker, refresh() waits for a fresh result and errors reject it', async () =>
+test("with a worker, changes during a request are sent once it is answered", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker });
-  const errors: unknown[] = [];
-  cy.on('avoiderror', (_evt, error) => errors.push(error));
-  const consoleError = console.error;
-  const logged: unknown[][] = [];
-  console.error = (...args: unknown[]) => logged.push(args);
-  try
-  {
-    await routing.ready;
-    const [first, second] = await Promise.all([routing.refresh(), routing.refresh()]);
-    assert.equal(first.get('ab')?.length, second.get('ab')?.length);
-    assert.equal(worker.requests.length, 3, 'the second caller asked during the first request');
-
-    worker.answerError = 'libavoid broke';
-    await assert.rejects(routing.refresh(), /cytoscape-libavoid: libavoid broke/);
-    assert.equal(errors.length, 0, 'a caller that waits gets the error itself');
-
-    cy.$id('c').position({ x: 150, y: 50 });
-    await wait(40);
-    assert.equal(errors.length, 1, 'automatic runs report errors as avoiderror');
-    assert.equal(logged.length, 1, 'and log them once');
-  }
-  finally
-  {
-    console.error = consoleError;
-    cy.destroy();
-  }
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker });
+    const routes = countRoutes(cy);
+    try
+    {
+        await routing.ready;
+        worker.delayMs = 60;
+        const c = cy.$id("c");
+        for (const y of [20, 40, 60, 80, 300])
+        {
+            c.position({ x: 150, y });
+            await wait(10);
+        }
+        await wait(250);
+        assert.equal(worker.requests.length, 3, "initial, first move, then the latest state");
+        assert.equal(worker.requests[2].model.nodes.find((node) => node.id === "c")?.y, 300);
+        assert.equal(routing.getRoute("ab")?.length, 2, "ends with the final position");
+        assert.equal(routes.count, 3);
+    }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('with a worker, a failing first run rejects ready', async () =>
+test("with a worker, refresh() waits for a fresh result and errors reject it", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  worker.answerError = 'libavoid broke';
-  const routing = cy.libavoid({ worker });
-  try
-  {
-    await assert.rejects(routing.ready, /libavoid broke/);
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker });
+    const errors: unknown[] = [];
+    cy.on("avoiderror", (_evt, error) => errors.push(error));
+    const consoleError = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => logged.push(args);
+    try
+    {
+        await routing.ready;
+        const [first, second] = await Promise.all([routing.refresh(), routing.refresh()]);
+        assert.equal(first.get("ab")?.length, second.get("ab")?.length);
+        assert.equal(worker.requests.length, 3, "the second caller asked during the first request");
+
+        worker.answerError = "libavoid broke";
+        await assert.rejects(routing.refresh(), /cytoscape-libavoid: libavoid broke/);
+        assert.equal(errors.length, 0, "a caller that waits gets the error itself");
+
+        cy.$id("c").position({ x: 150, y: 50 });
+        await wait(40);
+        assert.equal(errors.length, 1, "automatic runs report errors as avoiderror");
+        assert.equal(logged.length, 1, "and log them once");
+    }
+    finally
+    {
+        console.error = consoleError;
+        cy.destroy();
+    }
 });
 
-test('a worker that fails to load rejects ready; once it works again, routing resumes', async () =>
+test("with a worker, a failing first run rejects ready", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  worker.silent = true;
-  const routing = cy.libavoid({ worker });
-  try
-  {
-    setTimeout(() => worker.fail('404 routing.worker.js'), 10);
-    await assert.rejects(routing.ready, /routing worker failed \(error\): 404 routing\.worker\.js/);
-
-    worker.silent = false; // e.g. an error thrown in the worker that did not stop it
-    const routes = await routing.refresh();
-    assert.ok((routes.get('ab')?.length ?? 0) >= 4, 'not stuck on the failed request');
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    worker.answerError = "libavoid broke";
+    const routing = cy.libavoid({ worker });
+    try
+    {
+        await assert.rejects(routing.ready, /libavoid broke/);
+    }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('destroy() while a worker request is in flight ignores its answer', async () =>
+test("a worker that fails to load rejects ready; once it works again, routing resumes", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  worker.delayMs = 30;
-  const routing = cy.libavoid({ worker });
-  const routes = countRoutes(cy);
-  routing.destroy();
-  try
-  {
-    await routing.ready;
-    await wait(60);
-    assert.equal(routes.count, 0);
-    assert.equal(cy.$id('ab').style('curve-style'), 'taxi');
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    worker.silent = true;
+    const routing = cy.libavoid({ worker });
+    try
+    {
+        setTimeout(() => worker.fail("404 routing.worker.js"), 10);
+        await assert.rejects(routing.ready, /routing worker failed \(error\): 404 routing\.worker\.js/);
+
+        worker.silent = false; // e.g. an error thrown in the worker that did not stop it
+        const routes = await routing.refresh();
+        assert.ok((routes.get("ab")?.length ?? 0) >= 4, "not stuck on the failed request");
+    }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('a late worker answer keeps the edge ends on nodes that moved meanwhile', async () =>
+test("destroy() while a worker request is in flight ignores its answer", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker });
-  try
-  {
-    await routing.ready;
-    worker.delayMs = 60;
-    const refreshed = routing.refresh(); // sent with a at (0, 0)
-    cy.$id('a').position({ x: 0, y: 50 }); // moves while the request is in flight
-    await refreshed;
-    const start = routing.getRoute('ab')?.[0];
-    assert.ok(start);
-    // relative to a's position at request time, so Cytoscape draws the end at a's new position
-    assert.equal(cy.$id('ab').style('source-endpoint'), `${start.x}px ${start.y}px`);
-  }
-  finally
-  {
-    cy.destroy();
-  }
-});
-
-test('edges removed while a worker request is in flight are skipped', async () =>
-{
-  const cy = createCy([
-    ...obstacleElements(),
-    { data: { id: 'd' }, position: { x: 300, y: 200 } },
-    { data: { id: 'ad', source: 'a', target: 'd' } },
-  ]);
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker });
-  try
-  {
-    await routing.ready;
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
     worker.delayMs = 30;
-    const refreshed = routing.refresh();
-    cy.$id('ad').remove();
-    await refreshed; // must not throw on the missing edge
-    await wait(80);
-    assert.equal(routing.getRoute('ad'), undefined);
-    assert.equal(cy.$id('ab').style('curve-style'), 'segments');
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    const routing = cy.libavoid({ worker });
+    const routes = countRoutes(cy);
+    routing.destroy();
+    try
+    {
+        await routing.ready;
+        await wait(60);
+        assert.equal(routes.count, 0);
+        assert.equal(cy.$id("ab").style("curve-style"), "taxi");
+    }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('setOptions during a worker request is routed afterwards', async () =>
+test("a late worker answer keeps the edge ends on nodes that moved meanwhile", async () =>
 {
-  const cy = createCy(obstacleElements());
-  const worker = new InProcessWorker();
-  const routing = cy.libavoid({ worker });
-  try
-  {
-    await routing.ready;
-    worker.delayMs = 40;
-    cy.$id('c').position({ x: 150, y: 10 }); // starts a request
-    await wait(10);
-    routing.setOptions({ edgeSpacing: 6 }); // while it is in flight
-    await wait(150);
-    assert.equal(worker.requests.at(-1)?.options.edgeSpacing, 6);
-  }
-  finally
-  {
-    cy.destroy();
-  }
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker });
+    try
+    {
+        await routing.ready;
+        worker.delayMs = 60;
+        const refreshed = routing.refresh(); // sent with a at (0, 0)
+        cy.$id("a").position({ x: 0, y: 50 }); // moves while the request is in flight
+        await refreshed;
+        const start = routing.getRoute("ab")?.[0];
+        assert.ok(start);
+        // relative to a's position at request time, so Cytoscape draws the end at a's new position
+        assert.equal(cy.$id("ab").style("source-endpoint"), `${start.x}px ${start.y}px`);
+    }
+    finally
+    {
+        cy.destroy();
+    }
 });
 
-test('WorkerRouters sharing one worker get their own answers; dispose() rejects pending requests', async () =>
+test("edges removed while a worker request is in flight are skipped", async () =>
 {
-  const worker = new InProcessWorker();
-  const model = (x: number): GraphModel => ({
-    nodes: [
-      { id: 'a', x: 0, y: 0, width: 40, height: 40 },
-      { id: 'b', x, y: 0, width: 40, height: 40 },
-    ],
-    edges: [{ id: 'ab', source: 'a', target: 'b' }],
-  });
-  const first = new WorkerRouter(worker);
-  const second = new WorkerRouter(worker);
-  const [near, far] = await Promise.all([
-    first.route(model(100), DEFAULT_ROUTING_OPTIONS),
-    second.route(model(500), DEFAULT_ROUTING_OPTIONS),
-  ]);
-  assert.equal(near.routes.get('ab')?.at(-1)?.x, 80);
-  assert.equal(far.routes.get('ab')?.at(-1)?.x, 480);
-  assert.equal(first.busy || second.busy, false);
+    const cy = createCy([
+        ...obstacleElements(),
+        { data: { id: "d" }, position: { x: 300, y: 200 } },
+        { data: { id: "ad", source: "a", target: "d" } },
+    ]);
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker });
+    try
+    {
+        await routing.ready;
+        worker.delayMs = 30;
+        const refreshed = routing.refresh();
+        cy.$id("ad").remove();
+        await refreshed; // must not throw on the missing edge
+        await wait(80);
+        assert.equal(routing.getRoute("ad"), undefined);
+        assert.equal(cy.$id("ab").style("curve-style"), "segments");
+    }
+    finally
+    {
+        cy.destroy();
+    }
+});
 
-  const pending = first.route(model(100), DEFAULT_ROUTING_OPTIONS);
-  assert.equal(first.busy, true);
-  first.dispose();
-  await assert.rejects(pending, /disposed/);
-  second.dispose();
+test("setOptions during a worker request is routed afterwards", async () =>
+{
+    const cy = createCy(obstacleElements());
+    const worker = new InProcessWorker();
+    const routing = cy.libavoid({ worker });
+    try
+    {
+        await routing.ready;
+        worker.delayMs = 40;
+        cy.$id("c").position({ x: 150, y: 10 }); // starts a request
+        await wait(10);
+        routing.setOptions({ edgeSpacing: 6 }); // while it is in flight
+        await wait(150);
+        assert.equal(worker.requests.at(-1)?.options.edgeSpacing, 6);
+    }
+    finally
+    {
+        cy.destroy();
+    }
+});
+
+test("WorkerRouters sharing one worker get their own answers; dispose() rejects pending requests", async () =>
+{
+    const worker = new InProcessWorker();
+    const model = (x: number): GraphModel => ({
+        nodes: [
+            { id: "a", x: 0, y: 0, width: 40, height: 40 },
+            { id: "b", x, y: 0, width: 40, height: 40 },
+        ],
+        edges: [{ id: "ab", source: "a", target: "b" }],
+    });
+    const first = new WorkerRouter(worker);
+    const second = new WorkerRouter(worker);
+    const [near, far] = await Promise.all([
+        first.route(model(100), DEFAULT_ROUTING_OPTIONS),
+        second.route(model(500), DEFAULT_ROUTING_OPTIONS),
+    ]);
+    assert.equal(near.routes.get("ab")?.at(-1)?.x, 80);
+    assert.equal(far.routes.get("ab")?.at(-1)?.x, 480);
+    assert.equal(first.busy || second.busy, false);
+
+    const pending = first.route(model(100), DEFAULT_ROUTING_OPTIONS);
+    assert.equal(first.busy, true);
+    first.dispose();
+    await assert.rejects(pending, /disposed/);
+    second.dispose();
 });

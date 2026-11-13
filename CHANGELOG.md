@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.0.1 (2026-11-13)
+
+No change to options, events or routes; code that uses 1.0.0 works unchanged.
+
+### Changed
+
+- An index or lookup the code relies on (a route point, a node of a routable
+  edge) is now checked: if it is ever missing, routing throws a plugin error
+  (`cytoscape-libavoid: internal error: …`) instead of going on with `undefined`.
+- `RoutingParameterName` / `RoutingOptionName` are written out as union types
+  instead of being derived from the name lists; they allow the same names.
+- `AvoidPoint`, `Rectangle`, `ConnEnd` and `Checkpoint` (`libavoid/api.ts`) are
+  type aliases instead of interfaces without members of their own.
+- The worker's answer type is split into `RoutedResponse` and `FailedResponse`
+  (`worker/messages.ts`); `RouteResponse` is their union, as before.
+
+### Code style
+
+The sources in `src/` follow an ESLint ruleset, enforced with dprint and oxlint:
+
+- 4 spaces, double quotes, at most 128 characters per line (dprint)
+- `===` and no `any` everywhere; in `src/` also explicit return types,
+  every `let` initialised, and no non-null assertions (`!`): `itemAt()` /
+  `defined()` in `shared/errors.ts` check those spots instead
+- in `src/` (`scripts/style-check.ts`): a type annotation on every variable,
+  destructuring, parameter and property (as `@typescript-eslint/typedef`), and
+  class members in the default `@typescript-eslint/member-ordering` order
+- every interface member documented; constants that hold a value, not a
+  function, are UPPER_CASE (`nextFrame` is now a function)
+
+If you keep a modified copy of `src/`, expect every line to differ in a diff
+against 1.0.0, from the reformatting.
+
 ## 1.0.0 (2026-11-04)
 
 ### Breaking changes

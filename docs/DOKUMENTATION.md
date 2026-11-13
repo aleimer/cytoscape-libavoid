@@ -1,6 +1,6 @@
 # cytoscape-libavoid – Entwicklerdokumentation
 
-Version 1.0.0 · für Cytoscape.js ≥ 3.2 · libavoid-js 0.5.0-beta.5
+Version 1.0.1 · für Cytoscape.js ≥ 3.2 · libavoid-js 0.5.0-beta.5
 
 `cytoscape-libavoid` ist eine Cytoscape.js-Erweiterung, die Kanten mit
 [libavoid](https://www.adaptagrams.org/documentation/libavoid.html) routet,
@@ -891,10 +891,27 @@ zurückgegebenen Kopien freigegeben werden.
 Formatiert wird mit dprint (`npm run format`, Prüfung: `npm run format:check`,
 Einstellungen in `dprint.json`). Code-Stil:
 
+- 4 Leerzeichen Einrückung, doppelte Anführungszeichen (einfache nur, wo sie
+  Escapes sparen), höchstens 128 Zeichen pro Zeile (dprint; Kommentare bricht
+  dprint nicht um, die bleiben von Hand unter 128).
 - Geschweifte Klammern um jeden `if`-/`else`-/`for`-/`while`-Rumpf, auch
   einzeilige; die öffnende Klammer steht in der nächsten Zeile (dprint).
 - Keine leeren Blöcke, `catch`es oder Funktionen (oxlint `no-empty`,
   `no-empty-function`): Fehler werden behandelt oder gemeldet.
+- Nur `===` / `!==` (`eqeqeq`), kein `any` (`no-explicit-any`, stattdessen
+  `unknown`).
+- In `src/` zusätzlich (oxlint): jede Funktion hat einen Rückgabetyp
+  (`explicit-function-return-type`), jedes `let` einen Startwert
+  (`init-declarations`), und es gibt kein `!` (`no-non-null-assertion`).
+  Stattdessen `itemAt(liste, index)` und `defined(wert, "was")` aus
+  `shared/errors.ts`: Sie prüfen, was der Code als vorhanden voraussetzt, und
+  werfen sonst einen Plugin-Fehler.
+- In `src/` (`npm run style:check`): jede Variable, Destrukturierung, jeder
+  Parameter und jedes Property hat eine Typangabe (wie
+  `@typescript-eslint/typedef` mit allen Optionen), und Klassenglieder stehen in
+  der Standardreihenfolge von `@typescript-eslint/member-ordering`: Felder,
+  Konstruktor, Getter/Setter, Methoden; jeweils statisch vor Instanz, dann
+  public, protected, private.
 - In `src/`: jedes Interface hat einen JSDoc-Kommentar, mehrzeilige Kommentare
   sind JSDoc-Kommentare (`/** … */`) statt mehrerer `//`-Zeilen, und
   Konstanten auf Dateiebene, die Werte enthalten, heißen `UPPER_CASE`

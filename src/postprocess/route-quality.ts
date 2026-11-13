@@ -1,18 +1,18 @@
 /** Measures routes, to compare different routings of the same model. */
 
-import type { Point } from '../shared/geometry';
-import type { GraphModel } from '../shared/graph';
-import { RouteGeometry } from './route-geometry';
+import type { Point } from "../shared/geometry";
+import type { GraphModel } from "../shared/graph";
+import { RouteGeometry } from "./route-geometry";
 
 /** How good a set of routes is: less of each is better. */
 export interface RouteQuality
 {
-  /** Length along which strokes of different edges lie on top of each other (px). */
-  overlapLength: number;
-  /** Crossings of segments of different edges. */
-  crossings: number;
-  /** Total route length (px). */
-  length: number;
+    /** Length along which strokes of different edges lie on top of each other (px). */
+    overlapLength: number;
+    /** Crossings of segments of different edges. */
+    crossings: number;
+    /** Total route length (px). */
+    length: number;
 }
 
 /**
@@ -23,29 +23,29 @@ export interface RouteQuality
  */
 export function measureGeometry(geometry: RouteGeometry): RouteQuality
 {
-  let overlapLength = 0;
-  let crossings = 0;
-  let length = 0;
-  for (const segment of geometry.segments)
-  {
-    length += segment.length;
-    for (const near of geometry.overlapping(segment))
+    let overlapLength: number = 0;
+    let crossings: number = 0;
+    let length: number = 0;
+    for (const segment of geometry.segments)
     {
-      overlapLength += segment.overlapLength(near) / 2; // each pair is seen twice
-    }
-    if (segment.positionAxis === 'x')
-    {
-      const [from, to] = segment.span;
-      for (const horizontal of geometry.segmentsBetween('y', from, to))
-      {
-        if (segment.crosses(horizontal))
+        length += segment.length;
+        for (const near of geometry.overlapping(segment))
         {
-          crossings++;
+            overlapLength += segment.overlapLength(near) / 2; // each pair is seen twice
         }
-      }
+        if (segment.positionAxis === "x")
+        {
+            const [from, to]: [number, number] = segment.span;
+            for (const horizontal of geometry.segmentsBetween("y", from, to))
+            {
+                if (segment.crosses(horizontal))
+                {
+                    crossings++;
+                }
+            }
+        }
     }
-  }
-  return { overlapLength, crossings, length };
+    return { overlapLength, crossings, length };
 }
 
 /**
@@ -57,5 +57,5 @@ export function measureGeometry(geometry: RouteGeometry): RouteQuality
  */
 export function measureRoutes(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel): RouteQuality
 {
-  return measureGeometry(new RouteGeometry(routes, model));
+    return measureGeometry(new RouteGeometry(routes, model));
 }

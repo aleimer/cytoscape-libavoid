@@ -12,6 +12,24 @@
     "eslint/curly": ["error", "all"],
     // no empty blocks or catches: errors are handled or reported, never swallowed
     "eslint/no-empty": "error",
-    "eslint/no-empty-function": "error"
-  }
+    "eslint/no-empty-function": "error",
+    // === and !== only
+    "eslint/eqeqeq": "error",
+    // unknown instead of any
+    "typescript/no-explicit-any": "error",
+    "typescript/adjacent-overload-signatures": "error"
+  },
+  "overrides": [
+    {
+      // the plugin itself; tests and scripts may use `!` and inferred return types
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "typescript/explicit-function-return-type": "error",
+        // every `let` gets a value where it is declared
+        "eslint/init-declarations": "error",
+        // itemAt() / defined() from shared/errors.ts instead of `!`
+        "typescript/no-non-null-assertion": "error"
+      }
+    }
+  ]
 }

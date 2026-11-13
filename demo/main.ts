@@ -1,226 +1,226 @@
 // Demo app: uses the TypeScript plugin from src/ exactly like
 // another code base would - import, register, call cy.libavoid().
-import cytoscape from 'cytoscape';
-import type { EdgeSingular, ElementDefinition } from 'cytoscape';
-import cytoscapeLibavoid from '../src';
-import type { LibavoidOptions, RoutedEventInfo } from '../src';
-import { flowLabel, flowWidth } from './flow-width';
-import { openOptionsDialog } from './options-dialog';
+import cytoscape from "cytoscape";
+import type { EdgeSingular, ElementDefinition } from "cytoscape";
+import cytoscapeLibavoid from "../src";
+import type { LibavoidOptions, RoutedEventInfo } from "../src";
+import { flowLabel, flowWidth } from "./flow-width";
+import { openOptionsDialog } from "./options-dialog";
 import {
-  DEFAULT_PLANT_SCALE,
-  isCollapsible,
-  PLANT_MAX_QUANTITY,
-  PLANT_MAX_WIDTH,
-  plantPositions,
-  plantView,
-} from './plant-graph';
-import { SMALL_FLOWS, SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH, SMALL_NODE_SIZE, SMALL_NODES } from './small-graph';
-import { TW_FLOWS, TW_MAX_QUANTITY, TW_MAX_WIDTH, TW_NODE_SIZE, TW_NODES } from './tw-graph';
+    DEFAULT_PLANT_SCALE,
+    isCollapsible,
+    PLANT_MAX_QUANTITY,
+    PLANT_MAX_WIDTH,
+    plantPositions,
+    plantView,
+} from "./plant-graph";
+import { SMALL_FLOWS, SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH, SMALL_NODE_SIZE, SMALL_NODES } from "./small-graph";
+import { TW_FLOWS, TW_MAX_QUANTITY, TW_MAX_WIDTH, TW_NODE_SIZE, TW_NODES } from "./tw-graph";
 
 cytoscape.use(cytoscapeLibavoid);
 
 const smallElements: ElementDefinition[] = [
-  ...SMALL_NODES.map(([id, label, x, y]) => ({
-    data: { id, label },
-    position: { x, y },
-    classes: id === 'qs' ? 'obstacle' : '',
-  })),
-  ...SMALL_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}-${t}`, source: s, target: t, q } })),
+    ...SMALL_NODES.map(([id, label, x, y]) => ({
+        data: { id, label },
+        position: { x, y },
+        classes: id === "qs" ? "obstacle" : "",
+    })),
+    ...SMALL_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}-${t}`, source: s, target: t, q } })),
 ];
 
 // ?graph=tw: the TW section of tw-graph.ts, wide edges centred next to thin ones
 const twElements: ElementDefinition[] = [
-  ...TW_NODES.map(([id, x, y]) => ({ data: { id, label: id }, position: { x, y }, classes: 'tw' })),
-  ...TW_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}->${t}`, source: s, target: t, q } })),
+    ...TW_NODES.map(([id, x, y]) => ({ data: { id, label: id }, position: { x, y }, classes: "tw" })),
+    ...TW_FLOWS.map(([s, t, q]) => ({ data: { id: `${s}->${t}`, source: s, target: t, q } })),
 ];
 
 // ?graph=plant: the steel plant of plant-graph.ts, with many crowded gaps and
 // groups; a double click collapses or expands a group
 const params = new URLSearchParams(location.search);
-const graph = params.get('graph');
-const plant = graph === 'plant';
-const tw = graph === 'tw';
+const graph = params.get("graph");
+const plant = graph === "plant";
+const tw = graph === "tw";
 const collapsed = new Set<string>();
 /** Plant node positions, updated from the graph so a collapse keeps what was dragged. */
 const plantNodePositions = new Map(plantPositions().map(({ id, x, y }) => [id, { x, y }]));
 function plantElements(): ElementDefinition[]
 {
-  const view = plantView(collapsed, plantNodePositions);
-  return [
-    ...view.groups.map(({ id, parent, collapsible }) => ({
-      data: { id, label: id, parent },
-      classes: collapsible ? 'group collapsible' : 'group',
-    })),
-    ...view.nodes.map(({ id, x, y, parent, collapsed: isGroup }) => ({
-      data: { id, label: isGroup ? `${id} +` : id, parent },
-      position: { x, y },
-      classes: isGroup ? 'plant collapsed' : 'plant',
-    })),
-    ...view.edges.map(({ id, source, target, quantity }) => ({ data: { id, source, target, q: quantity } })),
-  ];
+    const view = plantView(collapsed, plantNodePositions);
+    return [
+        ...view.groups.map(({ id, parent, collapsible }) => ({
+            data: { id, label: id, parent },
+            classes: collapsible ? "group collapsible" : "group",
+        })),
+        ...view.nodes.map(({ id, x, y, parent, collapsed: isGroup }) => ({
+            data: { id, label: isGroup ? `${id} +` : id, parent },
+            position: { x, y },
+            classes: isGroup ? "plant collapsed" : "plant",
+        })),
+        ...view.edges.map(({ id, source, target, quantity }) => ({ data: { id, source, target, q: quantity } })),
+    ];
 }
 const elements = plant ? plantElements() : tw ? twElements : smallElements;
 const [maxQuantity, maxWidth] = plant ?
-  [PLANT_MAX_QUANTITY, PLANT_MAX_WIDTH] :
-  tw ?
-  [TW_MAX_QUANTITY, TW_MAX_WIDTH] :
-  [SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH];
+    [PLANT_MAX_QUANTITY, PLANT_MAX_WIDTH] :
+    tw ?
+    [TW_MAX_QUANTITY, TW_MAX_WIDTH] :
+    [SMALL_MAX_QUANTITY, SMALL_MAX_WIDTH];
 
 const cy = cytoscape({
-  container: document.getElementById('cy'),
-  layout: { name: 'preset' },
-  elements,
-  style: [
-    {
-      selector: 'node',
-      style: {
-        shape: 'round-rectangle',
-        width: SMALL_NODE_SIZE.width,
-        height: SMALL_NODE_SIZE.height,
-        'background-color': '#4a6fa5',
-        label: 'data(label)',
-        color: '#fff',
-        'text-valign': 'center',
-        'font-size': 12,
-      },
-    },
-    { selector: 'node.obstacle', style: { 'background-color': '#b0b0b0', color: '#333' } },
-    {
-      selector: 'node.plant',
-      style: { width: DEFAULT_PLANT_SCALE.nodeWidth, height: DEFAULT_PLANT_SCALE.nodeHeight, 'font-size': 10 },
-    },
-    { selector: 'node.tw', style: { shape: 'rectangle', ...TW_NODE_SIZE, 'font-size': 20 } },
-    {
-      selector: 'node.collapsed',
-      style: { 'background-color': '#2f4d78', 'border-width': 2, 'border-color': '#1b2f4d' },
-    },
-    {
-      selector: 'node.group',
-      style: {
-        'background-color': '#4a6fa5',
-        'background-opacity': 0.06,
-        'border-width': 1,
-        'border-style': 'dashed',
-        'border-color': '#7d8fa8',
-        color: '#4a5568',
-        'text-valign': 'top',
-        'text-halign': 'center',
-        'font-size': 11,
-        padding: '12px',
-      },
-    },
-    { selector: 'node.group.collapsible', style: { 'border-style': 'solid', 'background-opacity': 0.1 } },
-    {
-      selector: 'edge',
-      style: {
-        // routing spaces parallel edges by this width
-        width: (edge: EdgeSingular) => flowWidth(Number(edge.data('q')), maxQuantity, maxWidth),
-        'line-color': '#e08a2c',
-        opacity: 0.75,
-        'target-arrow-shape': 'triangle',
-        'target-arrow-color': '#e08a2c',
-        'arrow-scale': 0.6,
-        'curve-style': 'taxi',
-        label: (edge: EdgeSingular) => flowLabel(Number(edge.data('q'))),
-        'font-size': 10,
-        color: '#7a4a12',
-        'text-background-color': '#fafafa',
-        'text-background-opacity': 0.85,
-        'text-background-padding': '1px',
-      },
-    },
-  ],
+    container: document.getElementById("cy"),
+    layout: { name: "preset" },
+    elements,
+    style: [
+        {
+            selector: "node",
+            style: {
+                shape: "round-rectangle",
+                width: SMALL_NODE_SIZE.width,
+                height: SMALL_NODE_SIZE.height,
+                "background-color": "#4a6fa5",
+                label: "data(label)",
+                color: "#fff",
+                "text-valign": "center",
+                "font-size": 12,
+            },
+        },
+        { selector: "node.obstacle", style: { "background-color": "#b0b0b0", color: "#333" } },
+        {
+            selector: "node.plant",
+            style: { width: DEFAULT_PLANT_SCALE.nodeWidth, height: DEFAULT_PLANT_SCALE.nodeHeight, "font-size": 10 },
+        },
+        { selector: "node.tw", style: { shape: "rectangle", ...TW_NODE_SIZE, "font-size": 20 } },
+        {
+            selector: "node.collapsed",
+            style: { "background-color": "#2f4d78", "border-width": 2, "border-color": "#1b2f4d" },
+        },
+        {
+            selector: "node.group",
+            style: {
+                "background-color": "#4a6fa5",
+                "background-opacity": 0.06,
+                "border-width": 1,
+                "border-style": "dashed",
+                "border-color": "#7d8fa8",
+                color: "#4a5568",
+                "text-valign": "top",
+                "text-halign": "center",
+                "font-size": 11,
+                padding: "12px",
+            },
+        },
+        { selector: "node.group.collapsible", style: { "border-style": "solid", "background-opacity": 0.1 } },
+        {
+            selector: "edge",
+            style: {
+                // routing spaces parallel edges by this width
+                width: (edge: EdgeSingular) => flowWidth(Number(edge.data("q")), maxQuantity, maxWidth),
+                "line-color": "#e08a2c",
+                opacity: 0.75,
+                "target-arrow-shape": "triangle",
+                "target-arrow-color": "#e08a2c",
+                "arrow-scale": 0.6,
+                "curve-style": "taxi",
+                label: (edge: EdgeSingular) => flowLabel(Number(edge.data("q"))),
+                "font-size": 10,
+                color: "#7a4a12",
+                "text-background-color": "#fafafa",
+                "text-background-opacity": 0.85,
+                "text-background-padding": "1px",
+            },
+        },
+    ],
 });
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const read = (): Partial<LibavoidOptions> => ({
-  rerouteOnDrag: $<HTMLInputElement>('rerouteOnDrag').checked,
-  dragRouteDelay: Math.max(0, Number($<HTMLInputElement>('dragRouteDelay').value) || 0),
-  hideEdgesOnDrag: $<HTMLInputElement>('hideEdgesOnDrag').checked,
-  labelPosition: $<HTMLInputElement>('labelPosition').checked ? 'longest-segment' : 'middle',
+    rerouteOnDrag: $<HTMLInputElement>("rerouteOnDrag").checked,
+    dragRouteDelay: Math.max(0, Number($<HTMLInputElement>("dragRouteDelay").value) || 0),
+    hideEdgesOnDrag: $<HTMLInputElement>("hideEdgesOnDrag").checked,
+    labelPosition: $<HTMLInputElement>("labelPosition").checked ? "longest-segment" : "middle",
 });
 
-const stats = $('stats');
+const stats = $("stats");
 // ?worker=1 routes in a Web Worker; the checkbox reloads the page with or without it
-const useWorker = params.has('worker');
-const workerToggle = $<HTMLInputElement>('worker');
+const useWorker = params.has("worker");
+const workerToggle = $<HTMLInputElement>("worker");
 workerToggle.checked = useWorker;
 const reloadWith = (key: string, value: string | undefined): void =>
 {
-  if (value === undefined)
-  {
-    params.delete(key);
-  }
-  else
-  {
-    params.set(key, value);
-  }
-  location.search = params.toString();
+    if (value === undefined)
+    {
+        params.delete(key);
+    }
+    else
+    {
+        params.set(key, value);
+    }
+    location.search = params.toString();
 };
-workerToggle.addEventListener('change', () => reloadWith('worker', workerToggle.checked ? '1' : undefined));
-const graphSelect = $<HTMLSelectElement>('graph');
-graphSelect.value = graph === 'plant' || graph === 'tw' ? graph : 'small';
+workerToggle.addEventListener("change", () => reloadWith("worker", workerToggle.checked ? "1" : undefined));
+const graphSelect = $<HTMLSelectElement>("graph");
+graphSelect.value = graph === "plant" || graph === "tw" ? graph : "small";
 graphSelect.addEventListener(
-  'change',
-  () => reloadWith('graph', graphSelect.value === 'small' ? undefined : graphSelect.value),
+    "change",
+    () => reloadWith("graph", graphSelect.value === "small" ? undefined : graphSelect.value),
 );
-const worker = useWorker ? new Worker('build/routing.worker.js', { type: 'module' }) : undefined;
+const worker = useWorker ? new Worker("build/routing.worker.js", { type: "module" }) : undefined;
 
-const passed: Partial<LibavoidOptions> = { ...read(), wasmUrl: 'build/libavoid.wasm', worker };
+const passed: Partial<LibavoidOptions> = { ...read(), wasmUrl: "build/libavoid.wasm", worker };
 const routing = cy.libavoid(passed);
 // for trying things out in the browser console
 Object.assign(window, { demo: { cy, routing } });
-let loadState = 'lädt …';
+let loadState = "lädt …";
 routing.ready.then(
-  () => (loadState = 'bereit'),
-  (err: Error) => (stats.textContent = loadState = 'Fehler: ' + err.message),
+    () => (loadState = "bereit"),
+    (err: Error) => (stats.textContent = loadState = "Fehler: " + err.message),
 );
-$('showOptions').addEventListener('click', () =>
-  openOptionsDialog(routing, {
-    passed,
-    sourceOf: worker ? { worker: "new Worker('build/routing.worker.js', { type: 'module' })" } : {},
-    loadState: () => `${worker ? 'im Web Worker' : 'im Hauptthread'} · ${passed.wasmUrl} · ${loadState}`,
-  }));
-cy.on('avoidrouted', (_evt, info: RoutedEventInfo) =>
+$("showOptions").addEventListener("click", () =>
+    openOptionsDialog(routing, {
+        passed,
+        sourceOf: worker ? { worker: "new Worker('build/routing.worker.js', { type: 'module' })" } : {},
+        loadState: () => `${worker ? "im Web Worker" : "im Hauptthread"} · ${passed.wasmUrl} · ${loadState}`,
+    }));
+cy.on("avoidrouted", (_evt, info: RoutedEventInfo) =>
 {
-  stats.textContent = `${info.edgeCount} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${
-    info.totalMs.toFixed(1)
-  } ms`;
+    stats.textContent = `${info.edgeCount} Kanten · Routing ${info.routingMs.toFixed(1)} ms · gesamt ${
+        info.totalMs.toFixed(1)
+    } ms`;
 });
 
 if (plant)
 {
-  cy.on('dbltap', 'node.collapsible, node.collapsed', (event) =>
-  {
-    const id: string = event.target.id();
-    if (!isCollapsible(id))
+    cy.on("dbltap", "node.collapsible, node.collapsed", (event) =>
     {
-      return;
-    }
-    for (const node of cy.nodes('.plant:childless').toArray())
-    {
-      if (!node.hasClass('collapsed'))
-      {
-        plantNodePositions.set(node.id(), { ...node.position() });
-      }
-    }
-    if (collapsed.has(id))
-    {
-      collapsed.delete(id);
-    }
-    else
-    {
-      collapsed.add(id);
-    }
-    cy.batch(() =>
-    {
-      cy.elements().remove();
-      cy.add(plantElements());
+        const id: string = event.target.id();
+        if (!isCollapsible(id))
+        {
+            return;
+        }
+        for (const node of cy.nodes(".plant:childless").toArray())
+        {
+            if (!node.hasClass("collapsed"))
+            {
+                plantNodePositions.set(node.id(), { ...node.position() });
+            }
+        }
+        if (collapsed.has(id))
+        {
+            collapsed.delete(id);
+        }
+        else
+        {
+            collapsed.add(id);
+        }
+        cy.batch(() =>
+        {
+            cy.elements().remove();
+            cy.add(plantElements());
+        });
     });
-  });
 }
 
-for (const id of ['rerouteOnDrag', 'dragRouteDelay', 'hideEdgesOnDrag', 'labelPosition'])
+for (const id of ["rerouteOnDrag", "dragRouteDelay", "hideEdgesOnDrag", "labelPosition"])
 {
-  $(id).addEventListener('input', () => routing.setOptions(read()));
+    $(id).addEventListener("input", () => routing.setOptions(read()));
 }

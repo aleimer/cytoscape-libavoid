@@ -20,257 +20,266 @@
  *   length, to compare routings.
  */
 
-import { extentOf, otherAxis } from '../shared/geometry';
-import type { Axis, Point } from '../shared/geometry';
-import { isObstacle } from '../shared/graph';
-import type { GraphModel, GraphNode } from '../shared/graph';
-import { NODE_MARGIN, Segment } from './segment';
-import { SegmentIndex } from './segment-index';
+import { defined, itemAt } from "../shared/errors";
+import { extentOf, otherAxis } from "../shared/geometry";
+import type { Axis, Point } from "../shared/geometry";
+import { isObstacle } from "../shared/graph";
+import type { GraphModel, GraphNode } from "../shared/graph";
+import { NODE_MARGIN, Segment } from "./segment";
+import type { SegmentEnd } from "./segment";
+import { SegmentIndex } from "./segment-index";
 
 /** Routes split into segments, with a spatial index and the queries the post-processing steps share. */
 export class RouteGeometry
 {
-  /** The graph the routes belong to. */
-  readonly model: GraphModel;
-  /** A copy of the routes; moving segments changes it, the input stays as it is. */
-  readonly routes: Map<string, Point[]>;
-  /** All orthogonal segments of {@link RouteGeometry.routes}, see {@link Segment.splitRoutes}. */
-  readonly segments: readonly Segment[];
-  /** Finds segments by position; every move goes through it. */
-  private readonly spatialIndex: SegmentIndex;
-  /** The segments of each route, to find the ones next to a segment in its route. */
-  private readonly segmentsByRoute = new Map<Point[], Segment[]>();
+    /** The graph the routes belong to. */
+    readonly model: GraphModel;
+    /** A copy of the routes; moving segments changes it, the input stays as it is. */
+    readonly routes: Map<string, Point[]>;
+    /** All orthogonal segments of {@link RouteGeometry.routes}, see {@link Segment.splitRoutes}. */
+    readonly segments: readonly Segment[];
+    /** Finds segments by position; every move goes through it. */
+    private readonly spatialIndex: SegmentIndex;
+    /** The segments of each route, to find the ones next to a segment in its route. */
+    private readonly segmentsByRoute: Map<Point[], Segment[]> = new Map<Point[], Segment[]>();
 
-  /**
-   * @param routes edge id -> route points; copied, not changed
-   * @param model  the graph the routes belong to, for edge widths and nodes
-   */
-  constructor(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel)
-  {
-    this.model = model;
-    this.routes = new Map([...routes].map(([edgeId, points]) => [edgeId, points.map((point) => ({ ...point }))]));
-    this.segments = Segment.splitRoutes(this.routes, model);
-    this.spatialIndex = new SegmentIndex(this.segments);
-    for (const segment of this.segments)
+    /**
+     * @param routes edge id -> route points; copied, not changed
+     * @param model  the graph the routes belong to, for edge widths and nodes
+     */
+    constructor(routes: ReadonlyMap<string, readonly Point[]>, model: GraphModel)
     {
-      this.segmentsByRoute.set(segment.route, [...(this.segmentsByRoute.get(segment.route) ?? []), segment]);
-    }
-  }
-
-  /**
-   * Segments of other edges whose strokes overlap a segment, see {@link SegmentIndex.overlapping}.
-   *
-   * @param segment one of {@link RouteGeometry.segments}
-   * @returns the overlapping segments
-   */
-  overlapping(segment: Segment): Segment[]
-  {
-    return this.spatialIndex.overlapping(segment);
-  }
-
-  /**
-   * Total length along which some segments overlap segments of other edges. A pair
-   * of two given segments counts twice.
-   *
-   * @param segments segments of this geometry
-   * @returns the summed {@link Segment.overlapLength} (px)
-   */
-  overlapLengthOf(segments: Iterable<Segment>): number
-  {
-    let total = 0;
-    for (const segment of segments)
-    {
-      for (const near of this.spatialIndex.overlapping(segment))
-      {
-        total += segment.overlapLength(near);
-      }
-    }
-    return total;
-  }
-
-  /**
-   * Some segments and the ones next to them in their routes: moving a segment
-   * across its axis stretches its neighbours, so they are affected too.
-   *
-   * @param segments segments of this geometry
-   * @returns a new set with `segments` and their neighbours
-   */
-  withRouteNeighbours(segments: Iterable<Segment>): Set<Segment>
-  {
-    const affected = new Set<Segment>(segments);
-    for (const segment of [...affected])
-    {
-      for (const neighbour of this.segmentsByRoute.get(segment.route) ?? [])
-      {
-        if (Math.abs(neighbour.startIndex - segment.startIndex) === 1)
+        this.model = model;
+        this.routes = new Map(
+            [...routes].map((
+                [edgeId, points]: [string, readonly Point[]],
+            ) => [edgeId, points.map((point: Point) => ({ ...point }))]),
+        );
+        this.segments = Segment.splitRoutes(this.routes, model);
+        this.spatialIndex = new SegmentIndex(this.segments);
+        for (const segment of this.segments)
         {
-          affected.add(neighbour);
+            this.segmentsByRoute.set(segment.route, [...(this.segmentsByRoute.get(segment.route) ?? []), segment]);
         }
-      }
     }
-    return affected;
-  }
 
-  /**
-   * Segments on an axis positioned between two coordinates, and a few just outside:
-   * callers check exactly. See {@link SegmentIndex.segmentsBetween}.
-   *
-   * @param axis the {@link Segment.positionAxis} of the segments to find
-   * @param low  the lowest position
-   * @param high the highest position
-   * @returns the segments, in no particular order
-   */
-  segmentsBetween(axis: Axis, low: number, high: number): Segment[]
-  {
-    return this.spatialIndex.segmentsBetween(axis, low, high);
-  }
-
-  /**
-   * Moves a segment to a new position on its axis; its neighbouring segments stretch.
-   *
-   * @param segment  one of {@link RouteGeometry.segments}
-   * @param position the new position, e.g. within {@link RouteGeometry.freeInterval}
-   */
-  move(segment: Segment, position: number): void
-  {
-    this.spatialIndex.move(segment, position);
-  }
-
-  /**
-   * Groups of segments that overlap each other, directly or through other segments of the group.
-   *
-   * @returns the groups with at least two segments; every segment is in one group at most
-   */
-  overlappingBundles(): Segment[][]
-  {
-    const bundleOf = new Map<Segment, Segment[]>();
-    const bundles: Segment[][] = [];
-    for (const start of this.segments)
+    /**
+     * Segments of other edges whose strokes overlap a segment, see {@link SegmentIndex.overlapping}.
+     *
+     * @param segment one of {@link RouteGeometry.segments}
+     * @returns the overlapping segments
+     */
+    overlapping(segment: Segment): Segment[]
     {
-      if (bundleOf.has(start))
-      {
-        continue;
-      }
-      const bundle = [start];
-      bundleOf.set(start, bundle);
-      for (let i = 0; i < bundle.length; i++)
-      {
-        for (const near of this.spatialIndex.overlapping(bundle[i]!))
+        return this.spatialIndex.overlapping(segment);
+    }
+
+    /**
+     * Total length along which some segments overlap segments of other edges. A pair
+     * of two given segments counts twice.
+     *
+     * @param segments segments of this geometry
+     * @returns the summed {@link Segment.overlapLength} (px)
+     */
+    overlapLengthOf(segments: Iterable<Segment>): number
+    {
+        let total: number = 0;
+        for (const segment of segments)
         {
-          if (bundleOf.has(near))
-          {
-            continue;
-          }
-          bundleOf.set(near, bundle);
-          bundle.push(near);
+            for (const near of this.spatialIndex.overlapping(segment))
+            {
+                total += segment.overlapLength(near);
+            }
         }
-      }
-      if (bundle.length > 1)
-      {
-        bundles.push(bundle);
-      }
-    }
-    return bundles;
-  }
-
-  /**
-   * The obstacles beside a segment: moving it across its axis would hit them.
-   *
-   * @param segment   the segment
-   * @param clearance added around every node before checking
-   * @returns the obstacles that reach into the segment's {@link Segment.span}, grown by `clearance`
-   */
-  obstaclesBeside(segment: Segment, clearance: number): GraphNode[]
-  {
-    const along = otherAxis(segment.positionAxis);
-    const [from, to] = segment.span;
-    return this.model.nodes.filter((node) =>
-    {
-      if (!isObstacle(node))
-      {
-        return false;
-      }
-      const [low, high] = extentOf(node, along, clearance);
-      return high > from && low < to;
-    });
-  }
-
-  /**
-   * Where a segment may be placed along its axis without entering a node, without
-   * reversing its neighbouring segments and without passing the ones beyond them.
-   * End segments also stay on the side of their node. Fixed segments stay where they are;
-   * one already closer to a node than {@link NODE_MARGIN} may only move away from it.
-   *
-   * @param segment one of {@link RouteGeometry.segments}
-   * @returns `[low, high]` on {@link Segment.positionAxis}; may be unbounded (±Infinity)
-   */
-  freeInterval(segment: Segment): [number, number]
-  {
-    const { positionAxis, route, startIndex, position } = segment;
-    if (!segment.movable)
-    {
-      return [position, position];
-    }
-    let low = -Infinity;
-    let high = Infinity;
-
-    // the neighbours keep their direction: route[startIndex - 1] and route[startIndex + 2] stay on their side
-    for (const neighbour of [route[startIndex - 1], route[startIndex + 2]])
-    {
-      if (!neighbour)
-      {
-        continue; // an end segment
-      }
-      const value = neighbour[positionAxis];
-      if (value < position)
-      {
-        low = Math.max(low, value + 1);
-      }
-      else if (value > position)
-      {
-        high = Math.min(high, value - 1);
-      }
-      else
-      {
-        return [position, position];
-      }
+        return total;
     }
 
-    for (const end of segment.ends)
+    /**
+     * Some segments and the ones next to them in their routes: moving a segment
+     * across its axis stretches its neighbours, so they are affected too.
+     *
+     * @param segments segments of this geometry
+     * @returns a new set with `segments` and their neighbours
+     */
+    withRouteNeighbours(segments: Iterable<Segment>): Set<Segment>
     {
-      const [sideLow, sideHigh] = segment.sideInterval(end)!;
-      low = Math.max(low, sideLow);
-      high = Math.min(high, sideHigh);
+        const affected: Set<Segment> = new Set<Segment>(segments);
+        for (const segment of [...affected])
+        {
+            for (const neighbour of this.segmentsByRoute.get(segment.route) ?? [])
+            {
+                if (Math.abs(neighbour.startIndex - segment.startIndex) === 1)
+                {
+                    affected.add(neighbour);
+                }
+            }
+        }
+        return affected;
     }
 
-    const attached = new Set(segment.ends.map((end) => end.node));
-    const clearance = segment.width / 2 + NODE_MARGIN;
-    // incl. the nodes at its end points where the neighbouring segments lie along them
-    for (const node of this.obstaclesBeside(segment, clearance))
+    /**
+     * Segments on an axis positioned between two coordinates, and a few just outside:
+     * callers check exactly. See {@link SegmentIndex.segmentsBetween}.
+     *
+     * @param axis the {@link Segment.positionAxis} of the segments to find
+     * @param low  the lowest position
+     * @param high the highest position
+     * @returns the segments, in no particular order
+     */
+    segmentsBetween(axis: Axis, low: number, high: number): Segment[]
     {
-      if (attached.has(node))
-      {
-        continue;
-      }
-      const [nodeLow, nodeHigh] = extentOf(node, positionAxis, clearance);
-      if (nodeHigh <= position)
-      {
-        low = Math.max(low, nodeHigh);
-      }
-      else if (nodeLow >= position)
-      {
-        high = Math.min(high, nodeLow);
-      }
-      // already closer than the margin: it may only move away from the node
-      else if (node[positionAxis] > position)
-      {
-        high = Math.min(high, position);
-      }
-      else
-      {
-        low = Math.max(low, position);
-      }
+        return this.spatialIndex.segmentsBetween(axis, low, high);
     }
-    return [low, high];
-  }
+
+    /**
+     * Moves a segment to a new position on its axis; its neighbouring segments stretch.
+     *
+     * @param segment  one of {@link RouteGeometry.segments}
+     * @param position the new position, e.g. within {@link RouteGeometry.freeInterval}
+     */
+    move(segment: Segment, position: number): void
+    {
+        this.spatialIndex.move(segment, position);
+    }
+
+    /**
+     * Groups of segments that overlap each other, directly or through other segments of the group.
+     *
+     * @returns the groups with at least two segments; every segment is in one group at most
+     */
+    overlappingBundles(): Segment[][]
+    {
+        const bundleOf: Map<Segment, Segment[]> = new Map<Segment, Segment[]>();
+        const bundles: Segment[][] = [];
+        for (const start of this.segments)
+        {
+            if (bundleOf.has(start))
+            {
+                continue;
+            }
+            const bundle: Segment[] = [start];
+            bundleOf.set(start, bundle);
+            for (let i: number = 0; i < bundle.length; i++)
+            {
+                for (const near of this.spatialIndex.overlapping(itemAt(bundle, i)))
+                {
+                    if (bundleOf.has(near))
+                    {
+                        continue;
+                    }
+                    bundleOf.set(near, bundle);
+                    bundle.push(near);
+                }
+            }
+            if (bundle.length > 1)
+            {
+                bundles.push(bundle);
+            }
+        }
+        return bundles;
+    }
+
+    /**
+     * The obstacles beside a segment: moving it across its axis would hit them.
+     *
+     * @param segment   the segment
+     * @param clearance added around every node before checking
+     * @returns the obstacles that reach into the segment's {@link Segment.span}, grown by `clearance`
+     */
+    obstaclesBeside(segment: Segment, clearance: number): GraphNode[]
+    {
+        const along: Axis = otherAxis(segment.positionAxis);
+        const [from, to]: [number, number] = segment.span;
+        return this.model.nodes.filter((node: GraphNode) =>
+        {
+            if (!isObstacle(node))
+            {
+                return false;
+            }
+            const [low, high]: [low: number, high: number] = extentOf(node, along, clearance);
+            return high > from && low < to;
+        });
+    }
+
+    /**
+     * Where a segment may be placed along its axis without entering a node, without
+     * reversing its neighbouring segments and without passing the ones beyond them.
+     * End segments also stay on the side of their node. Fixed segments stay where they are;
+     * one already closer to a node than {@link NODE_MARGIN} may only move away from it.
+     *
+     * @param segment one of {@link RouteGeometry.segments}
+     * @returns `[low, high]` on {@link Segment.positionAxis}; may be unbounded (±Infinity)
+     */
+    freeInterval(segment: Segment): [number, number]
+    {
+        const { positionAxis, route, startIndex, position }: Segment = segment;
+        if (!segment.movable)
+        {
+            return [position, position];
+        }
+        let low: number = -Infinity;
+        let high: number = Infinity;
+
+        // the neighbours keep their direction: route[startIndex - 1] and route[startIndex + 2] stay on their side
+        for (const neighbour of [route[startIndex - 1], route[startIndex + 2]])
+        {
+            if (!neighbour)
+            {
+                continue; // an end segment
+            }
+            const value: number = neighbour[positionAxis];
+            if (value < position)
+            {
+                low = Math.max(low, value + 1);
+            }
+            else if (value > position)
+            {
+                high = Math.min(high, value - 1);
+            }
+            else
+            {
+                return [position, position];
+            }
+        }
+
+        for (const end of segment.ends)
+        {
+            const [sideLow, sideHigh]: [number, number] = defined(
+                segment.sideInterval(end),
+                "the side interval of a movable end segment",
+            );
+            low = Math.max(low, sideLow);
+            high = Math.min(high, sideHigh);
+        }
+
+        const attached: Set<GraphNode> = new Set(segment.ends.map((end: SegmentEnd) => end.node));
+        const clearance: number = segment.width / 2 + NODE_MARGIN;
+        // incl. the nodes at its end points where the neighbouring segments lie along them
+        for (const node of this.obstaclesBeside(segment, clearance))
+        {
+            if (attached.has(node))
+            {
+                continue;
+            }
+            const [nodeLow, nodeHigh]: [low: number, high: number] = extentOf(node, positionAxis, clearance);
+            if (nodeHigh <= position)
+            {
+                low = Math.max(low, nodeHigh);
+            }
+            else if (nodeLow >= position)
+            {
+                high = Math.min(high, nodeLow);
+            }
+            // already closer than the margin: it may only move away from the node
+            else if (node[positionAxis] > position)
+            {
+                high = Math.min(high, position);
+            }
+            else
+            {
+                low = Math.max(low, position);
+            }
+        }
+        return [low, high];
+    }
 }

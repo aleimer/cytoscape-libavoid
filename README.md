@@ -236,8 +236,8 @@ npm install
 npm run typecheck   # tsc over everything, plus src/ with every strictness flag (tsconfig.strict.json)
 npm test            # node:test, incl. a headless Cytoscape integration test
 npm run test:e2e    # drags nodes of the demo in Chrome (playwright-core, uses the installed Chrome)
-npm run lint        # oxlint, plus the style rules of src/ (scripts/style-check.ts)
-npm run format      # dprint (braces on their own line, see dprint.json); format:check only checks
+npm run lint        # oxlint (.oxlintrc.json), plus the style rules of src/ incl. typedef and member order (scripts/style-check.ts)
+npm run format      # dprint: 4 spaces, double quotes, 128 columns, braces on their own line (dprint.json); format:check only checks
 npm run deps:check  # layering rules of src/ (.dependency-cruiser.cjs)
 npm run deps        # import graph of src/ as Mermaid -> docs/dependencies.md
 npm run perf        # routing core benchmark

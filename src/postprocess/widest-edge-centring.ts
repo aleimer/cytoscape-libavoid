@@ -19,29 +19,30 @@
  * at the target.
  */
 
-import { otherAxis } from '../shared/geometry';
-import type { Side } from '../shared/geometry';
-import type { RouteGeometry } from './route-geometry';
-import type { Segment, SegmentEnd } from './segment';
+import { itemAt } from "../shared/errors";
+import { otherAxis } from "../shared/geometry";
+import type { Point, Side } from "../shared/geometry";
+import type { RouteGeometry } from "./route-geometry";
+import type { Segment, SegmentEnd } from "./segment";
 
 /** Sides with fewer edges keep libavoid's fan. */
-const MIN_ENDS = 3;
+const MIN_ENDS: number = 3;
 /**
  * A fan that does not fit on the side is squeezed in steps of 1/SQUEEZE_STEPS
  * of its pitches, down to {@link MIN_SQUEEZE_STEPS} of them; below that the full fan is
  * shifted off the centre as little as needed to fit, see {@link shiftedFan}.
  */
-const SQUEEZE_STEPS = 10;
+const SQUEEZE_STEPS: number = 10;
 /** The most squeezed a fan gets, in steps of 1/{@link SQUEEZE_STEPS}. */
-const MIN_SQUEEZE_STEPS = 2;
+const MIN_SQUEEZE_STEPS: number = 2;
 
 /** One edge end on a node side, start or target end: the end segment and which of its ends it is. */
 interface SideEnd
 {
-  /** The first or last segment of the route. */
-  segment: Segment;
-  /** Which of its ends lies on the side. */
-  end: SegmentEnd;
+    /** The first or last segment of the route. */
+    segment: Segment;
+    /** Which of its ends lies on the side. */
+    end: SegmentEnd;
 }
 
 /**
@@ -56,13 +57,13 @@ interface SideEnd
  */
 export function centreWidestEdges(geometry: RouteGeometry, spacing: number): void
 {
-  for (const ends of endsBySide(geometry).values())
-  {
-    if (ends.length >= MIN_ENDS)
+    for (const ends of endsBySide(geometry).values())
     {
-      centreWidest(geometry, ends, spacing);
+        if (ends.length >= MIN_ENDS)
+        {
+            centreWidest(geometry, ends, spacing);
+        }
     }
-  }
 }
 
 /**
@@ -73,20 +74,20 @@ export function centreWidestEdges(geometry: RouteGeometry, spacing: number): voi
  */
 function endsBySide(geometry: RouteGeometry): Map<string, SideEnd[]>
 {
-  const bySide = new Map<string, SideEnd[]>();
-  for (const segment of geometry.segments)
-  {
-    for (const end of segment.ends)
+    const bySide: Map<string, SideEnd[]> = new Map<string, SideEnd[]>();
+    for (const segment of geometry.segments)
     {
-      if (!segment.sideInterval(end))
-      {
-        continue; // not on a side across the segment
-      }
-      const key = `${end.node.id} ${sideOf(segment, end)}`;
-      bySide.set(key, [...(bySide.get(key) ?? []), { segment, end }]);
+        for (const end of segment.ends)
+        {
+            if (!segment.sideInterval(end))
+            {
+                continue; // not on a side across the segment
+            }
+            const key: string = `${end.node.id} ${sideOf(segment, end)}`;
+            bySide.set(key, [...(bySide.get(key) ?? []), { segment, end }]);
+        }
     }
-  }
-  return bySide;
+    return bySide;
 }
 
 /**
@@ -98,8 +99,8 @@ function endsBySide(geometry: RouteGeometry): Map<string, SideEnd[]>
  */
 function sideOf(segment: Segment, { node, pointIndex }: SegmentEnd): Side
 {
-  const end = segment.route[pointIndex]!;
-  return segment.positionAxis === 'x' ? (end.y < node.y ? 'top' : 'bottom') : end.x < node.x ? 'left' : 'right';
+    const end: Point = itemAt(segment.route, pointIndex);
+    return segment.positionAxis === "x" ? (end.y < node.y ? "top" : "bottom") : end.x < node.x ? "left" : "right";
 }
 
 /**
@@ -113,69 +114,74 @@ function sideOf(segment: Segment, { node, pointIndex }: SegmentEnd): Side
  */
 function centreWidest(geometry: RouteGeometry, ends: SideEnd[], spacing: number): void
 {
-  if (ends.some(({ segment }) => !segment.movable))
-  {
-    return;
-  }
-  const fan = ends.map(({ segment }) => segment).sort((a, b) => a.position - b.position);
-  if (fan[0]!.position === fan[fan.length - 1]!.position)
-  {
-    return; // not fanned out, see nudgeConnectedSegments
-  }
-  const centre = ends[0]!.end.node[fan[0]!.positionAxis];
-  const widest = [...fan].sort(
-    (a, b) =>
-      b.width - a.width ||
-      Math.abs(a.position - centre) - Math.abs(b.position - centre) ||
-      a.edgeId.localeCompare(b.edgeId),
-  )[0]!;
-
-  // the others keep their order; the widest goes to the middle slot, on the side it came from
-  const originalSlot = fan.indexOf(widest);
-  const middleSlot = originalSlot < (fan.length - 1) / 2 ?
-    Math.floor((fan.length - 1) / 2) :
-    Math.ceil((fan.length - 1) / 2);
-  const others = fan.filter((segment) => segment !== widest);
-  /**
-   * where the middle slot adds crossings, one further out may not: the others then
-   * lie more on one side, e.g. away from the direction the widest turns to
-   */
-  const slots = fan
-    .map((_, slot) => slot)
-    .sort((a, b) =>
-      Math.abs(a - middleSlot) - Math.abs(b - middleSlot) || Math.abs(a - originalSlot) - Math.abs(b - originalSlot)
+    if (ends.some(({ segment }: SideEnd) => !segment.movable))
+    {
+        return;
+    }
+    const fan: Segment[] = ends.map(({ segment }: SideEnd) => segment).sort((a: Segment, b: Segment) =>
+        a.position - b.position
+    );
+    if (itemAt(fan, 0).position === itemAt(fan, fan.length - 1).position)
+    {
+        return; // not fanned out, see nudgeConnectedSegments
+    }
+    const centre: number = itemAt(ends, 0).end.node[itemAt(fan, 0).positionAxis];
+    const widest: Segment = itemAt(
+        [...fan].sort(
+            (a: Segment, b: Segment) =>
+                b.width - a.width ||
+                Math.abs(a.position - centre) - Math.abs(b.position - centre) ||
+                a.edgeId.localeCompare(b.edgeId),
+        ),
+        0,
     );
 
-  // moving an end segment stretches the next one of its route, which may then cross other edges
-  const affected = geometry.withRouteNeighbours(fan);
-  const crossingsBefore = crossingsOf(geometry, affected);
-  const overlapBefore = geometry.overlapLengthOf(fan);
-  const previous = fan.map((segment) => segment.position);
+    // the others keep their order; the widest goes to the middle slot, on the side it came from
+    const originalSlot: number = fan.indexOf(widest);
+    const middleSlot: number = originalSlot < (fan.length - 1) / 2 ?
+        Math.floor((fan.length - 1) / 2) :
+        Math.ceil((fan.length - 1) / 2);
+    const others: Segment[] = fan.filter((segment: Segment) => segment !== widest);
+    /**
+     * where the middle slot adds crossings, one further out may not: the others then
+     * lie more on one side, e.g. away from the direction the widest turns to
+     */
+    const slots: number[] = fan
+        .map((_: Segment, slot: number) => slot)
+        .sort((a: number, b: number) =>
+            Math.abs(a - middleSlot) - Math.abs(b - middleSlot) || Math.abs(a - originalSlot) - Math.abs(b - originalSlot)
+        );
 
-  // where no fan fits with the widest at the centre, one shifted towards the room there is
-  for (const fanOf of [fittingFan, shiftedFan])
-  {
-    for (const slot of slots)
+    // moving an end segment stretches the next one of its route, which may then cross other edges
+    const affected: Set<Segment> = geometry.withRouteNeighbours(fan);
+    const crossingsBefore: number = crossingsOf(geometry, affected);
+    const overlapBefore: number = geometry.overlapLengthOf(fan);
+    const previous: number[] = fan.map((segment: Segment) => segment.position);
+
+    // where no fan fits with the widest at the centre, one shifted towards the room there is
+    for (const fanOf of [fittingFan, shiftedFan])
     {
-      const order = [...others];
-      order.splice(slot, 0, widest);
-      const packed = fanOf(geometry, order, slot, centre, spacing);
-      if (!packed)
-      {
-        continue;
-      }
-      const loose = loosenedFan(order, slot, packed);
-      for (const positions of fits(geometry, order, loose) ? [packed, loose] : [packed])
-      {
-        order.forEach((segment, i) => geometry.move(segment, positions[i]!));
-        if (crossingsOf(geometry, affected) <= crossingsBefore && geometry.overlapLengthOf(fan) <= overlapBefore)
+        for (const slot of slots)
         {
-          return;
+            const order: Segment[] = [...others];
+            order.splice(slot, 0, widest);
+            const packed: number[] | undefined = fanOf(geometry, order, slot, centre, spacing);
+            if (!packed)
+            {
+                continue;
+            }
+            const loose: number[] = loosenedFan(order, slot, packed);
+            for (const positions of fits(geometry, order, loose) ? [packed, loose] : [packed])
+            {
+                order.forEach((segment: Segment, i: number) => geometry.move(segment, itemAt(positions, i)));
+                if (crossingsOf(geometry, affected) <= crossingsBefore && geometry.overlapLengthOf(fan) <= overlapBefore)
+                {
+                    return;
+                }
+                fan.forEach((segment: Segment, i: number) => geometry.move(segment, itemAt(previous, i)));
+            }
         }
-        fan.forEach((segment, i) => geometry.move(segment, previous[i]!));
-      }
     }
-  }
 }
 
 /**
@@ -191,28 +197,28 @@ function centreWidest(geometry: RouteGeometry, ends: SideEnd[], spacing: number)
  * @returns a position for each segment of `order`, or undefined if the fan does not fit anywhere
  */
 function shiftedFan(
-  geometry: RouteGeometry,
-  order: readonly Segment[],
-  slot: number,
-  centre: number,
-  spacing: number,
+    geometry: RouteGeometry,
+    order: readonly Segment[],
+    slot: number,
+    centre: number,
+    spacing: number,
 ): number[] | undefined
 {
-  const positions = fanPositions(pitchesOf(order, spacing), slot, centre, 1);
-  let low = -Infinity;
-  let high = Infinity;
-  order.forEach((segment, i) =>
-  {
-    const [freeLow, freeHigh] = geometry.freeInterval(segment);
-    low = Math.max(low, freeLow - positions[i]!);
-    high = Math.min(high, freeHigh - positions[i]!);
-  });
-  if (low > high)
-  {
-    return undefined;
-  }
-  const shift = Math.min(Math.max(0, low), high);
-  return positions.map((position) => position + shift);
+    const positions: number[] = fanPositions(pitchesOf(order, spacing), slot, centre, 1);
+    let low: number = -Infinity;
+    let high: number = Infinity;
+    order.forEach((segment: Segment, i: number) =>
+    {
+        const [freeLow, freeHigh]: [number, number] = geometry.freeInterval(segment);
+        low = Math.max(low, freeLow - itemAt(positions, i));
+        high = Math.min(high, freeHigh - itemAt(positions, i));
+    });
+    if (low > high)
+    {
+        return undefined;
+    }
+    const shift: number = Math.min(Math.max(0, low), high);
+    return positions.map((position: number) => position + shift);
 }
 
 /**
@@ -228,16 +234,16 @@ function shiftedFan(
  */
 function loosenedFan(order: readonly Segment[], slot: number, packed: readonly number[]): number[]
 {
-  const loose = [...packed];
-  for (let i = slot + 1; i < order.length; i++)
-  {
-    loose[i] = Math.max(loose[i - 1]! + packed[i]! - packed[i - 1]!, order[i]!.position);
-  }
-  for (let i = slot - 1; i >= 0; i--)
-  {
-    loose[i] = Math.min(loose[i + 1]! - (packed[i + 1]! - packed[i]!), order[i]!.position);
-  }
-  return loose;
+    const loose: number[] = [...packed];
+    for (let i: number = slot + 1; i < order.length; i++)
+    {
+        loose[i] = Math.max(itemAt(loose, i - 1) + itemAt(packed, i) - itemAt(packed, i - 1), itemAt(order, i).position);
+    }
+    for (let i: number = slot - 1; i >= 0; i--)
+    {
+        loose[i] = Math.min(itemAt(loose, i + 1) - (itemAt(packed, i + 1) - itemAt(packed, i)), itemAt(order, i).position);
+    }
+    return loose;
 }
 
 /**
@@ -250,11 +256,11 @@ function loosenedFan(order: readonly Segment[], slot: number, packed: readonly n
  */
 function fits(geometry: RouteGeometry, order: readonly Segment[], positions: readonly number[]): boolean
 {
-  return order.every((segment, i) =>
-  {
-    const [low, high] = geometry.freeInterval(segment);
-    return low <= positions[i]! && positions[i]! <= high;
-  });
+    return order.every((segment: Segment, i: number) =>
+    {
+        const [low, high]: [number, number] = geometry.freeInterval(segment);
+        return low <= itemAt(positions, i) && itemAt(positions, i) <= high;
+    });
 }
 
 /**
@@ -271,23 +277,23 @@ function fits(geometry: RouteGeometry, order: readonly Segment[], positions: rea
  *   squeezed as little as possible; undefined if even the most squeezed one does not fit
  */
 function fittingFan(
-  geometry: RouteGeometry,
-  order: readonly Segment[],
-  slot: number,
-  centre: number,
-  spacing: number,
+    geometry: RouteGeometry,
+    order: readonly Segment[],
+    slot: number,
+    centre: number,
+    spacing: number,
 ): number[] | undefined
 {
-  const pitches = pitchesOf(order, spacing);
-  for (let steps = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
-  {
-    const positions = fanPositions(pitches, slot, centre, steps / SQUEEZE_STEPS);
-    if (fits(geometry, order, positions))
+    const pitches: number[] = pitchesOf(order, spacing);
+    for (let steps: number = SQUEEZE_STEPS; steps >= MIN_SQUEEZE_STEPS; steps--)
     {
-      return positions;
+        const positions: number[] = fanPositions(pitches, slot, centre, steps / SQUEEZE_STEPS);
+        if (fits(geometry, order, positions))
+        {
+            return positions;
+        }
     }
-  }
-  return undefined;
+    return undefined;
 }
 
 /**
@@ -299,19 +305,19 @@ function fittingFan(
  */
 function crossingsOf(geometry: RouteGeometry, segments: ReadonlySet<Segment>): number
 {
-  let crossings = 0;
-  for (const segment of segments)
-  {
-    const [from, to] = segment.span;
-    for (const across of geometry.segmentsBetween(otherAxis(segment.positionAxis), from, to))
+    let crossings: number = 0;
+    for (const segment of segments)
     {
-      if (segment.crosses(across))
-      {
-        crossings++;
-      }
+        const [from, to]: [number, number] = segment.span;
+        for (const across of geometry.segmentsBetween(otherAxis(segment.positionAxis), from, to))
+        {
+            if (segment.crosses(across))
+            {
+                crossings++;
+            }
+        }
     }
-  }
-  return crossings;
+    return crossings;
 }
 
 /**
@@ -323,7 +329,7 @@ function crossingsOf(geometry: RouteGeometry, segments: ReadonlySet<Segment>): n
  */
 function pitchesOf(order: readonly Segment[], spacing: number): number[]
 {
-  return order.slice(1).map((segment, i) => (order[i]!.width + segment.width) / 2 + spacing);
+    return order.slice(1).map((segment: Segment, i: number) => (itemAt(order, i).width + segment.width) / 2 + spacing);
 }
 
 /**
@@ -337,10 +343,10 @@ function pitchesOf(order: readonly Segment[], spacing: number): number[]
  */
 function fanPositions(pitches: readonly number[], slot: number, centre: number, squeeze: number): number[]
 {
-  const offsets = [0];
-  for (const pitch of pitches)
-  {
-    offsets.push(offsets[offsets.length - 1]! + pitch * squeeze);
-  }
-  return offsets.map((offset) => centre + offset - offsets[slot]!);
+    const offsets: number[] = [0];
+    for (const pitch of pitches)
+    {
+        offsets.push(itemAt(offsets, offsets.length - 1) + pitch * squeeze);
+    }
+    return offsets.map((offset: number) => centre + offset - itemAt(offsets, slot));
 }

@@ -1,36 +1,36 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { EdgeRouter, loadLibavoid } from '../src';
-import type { GraphModel } from '../src';
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { EdgeRouter, loadLibavoid } from "../src";
+import type { GraphModel } from "../src";
 
 /** 6 x 5 nodes, each linked to two nodes of the next column. */
 function gridModel(): GraphModel
 {
-  const model: GraphModel = { nodes: [], edges: [] };
-  for (let col = 0; col < 6; col++)
-  {
-    for (let row = 0; row < 5; row++)
+    const model: GraphModel = { nodes: [], edges: [] };
+    for (let col = 0; col < 6; col++)
     {
-      model.nodes.push({ id: `n${col}_${row}`, x: col * 200, y: row * 100, width: 60, height: 40 });
+        for (let row = 0; row < 5; row++)
+        {
+            model.nodes.push({ id: `n${col}_${row}`, x: col * 200, y: row * 100, width: 60, height: 40 });
+        }
     }
-  }
-  for (let col = 0; col < 5; col++)
-  {
-    for (let row = 0; row < 5; row++)
+    for (let col = 0; col < 5; col++)
     {
-      for (const next of [row, (row + 2) % 5])
-      {
-        const id = `e${col}_${row}_${next}`;
-        model.edges.push({ id, source: `n${col}_${row}`, target: `n${col + 1}_${next}`, width: 4 });
-      }
+        for (let row = 0; row < 5; row++)
+        {
+            for (const next of [row, (row + 2) % 5])
+            {
+                const id = `e${col}_${row}_${next}`;
+                model.edges.push({ id, source: `n${col}_${row}`, target: `n${col + 1}_${next}`, width: 4 });
+            }
+        }
     }
-  }
-  return model;
+    return model;
 }
 
 interface Copy
 {
-  delete(): void;
+    delete(): void;
 }
 
 /**
@@ -40,43 +40,43 @@ interface Copy
  */
 function trackRouteCopies(connRefPrototype: { displayRoute(): unknown; }): { created: number; freed: number; }
 {
-  const counts = { created: 0, freed: 0 };
-  const track = <T extends Copy>(copy: T): T =>
-  {
-    counts.created++;
-    const free = copy.delete.bind(copy);
-    copy.delete = () =>
+    const counts = { created: 0, freed: 0 };
+    const track = <T extends Copy>(copy: T): T =>
     {
-      counts.freed++;
-      free();
+        counts.created++;
+        const free = copy.delete.bind(copy);
+        copy.delete = () =>
+        {
+            counts.freed++;
+            free();
+        };
+        return copy;
     };
-    return copy;
-  };
-  const displayRoute = connRefPrototype.displayRoute;
-  connRefPrototype.displayRoute = function(this: unknown)
-  {
-    const route = track(displayRoute.call(this) as Copy & { at(index: number): Copy; });
-    const at = route.at.bind(route);
-    route.at = (index: number) => track(at(index));
-    return route;
-  };
-  return counts;
+    const displayRoute = connRefPrototype.displayRoute;
+    connRefPrototype.displayRoute = function(this: unknown)
+    {
+        const route = track(displayRoute.call(this) as Copy & { at(index: number): Copy; });
+        const at = route.at.bind(route);
+        route.at = (index: number) => track(at(index));
+        return route;
+    };
+    return counts;
 }
 
-test('every route and point copy libavoid hands out is freed', async () =>
+test("every route and point copy libavoid hands out is freed", async () =>
 {
-  const avoid = await loadLibavoid();
-  const prototype = (avoid.ConnRef as unknown as { prototype: { displayRoute(): unknown; }; }).prototype;
-  const original = prototype.displayRoute;
-  const counts = trackRouteCopies(prototype);
-  try
-  {
-    new EdgeRouter(avoid).route(gridModel());
-    assert.ok(counts.created > 100, `copies were made (${counts.created})`);
-    assert.equal(counts.freed, counts.created, 'copies left in WebAssembly memory');
-  }
-  finally
-  {
-    prototype.displayRoute = original;
-  }
+    const avoid = await loadLibavoid();
+    const prototype = (avoid.ConnRef as unknown as { prototype: { displayRoute(): unknown; }; }).prototype;
+    const original = prototype.displayRoute;
+    const counts = trackRouteCopies(prototype);
+    try
+    {
+        new EdgeRouter(avoid).route(gridModel());
+        assert.ok(counts.created > 100, `copies were made (${counts.created})`);
+        assert.equal(counts.freed, counts.created, "copies left in WebAssembly memory");
+    }
+    finally
+    {
+        prototype.displayRoute = original;
+    }
 });

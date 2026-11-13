@@ -15,44 +15,45 @@
  * Each folder only imports from the ones below it (npm run deps:check).
  */
 
-import type cytoscapeFactory from 'cytoscape';
-import type { Core } from 'cytoscape';
-import { LibavoidRouting, SCRATCH_KEY } from './cytoscape-adapter/libavoid-routing';
-import type { LibavoidOptions } from './cytoscape-adapter/options';
+import type cytoscapeFactory from "cytoscape";
+import type { Core } from "cytoscape";
+import { LibavoidRouting, SCRATCH_KEY } from "./cytoscape-adapter/libavoid-routing";
+import type { LibavoidOptions } from "./cytoscape-adapter/options";
 
 // the plugin
-export { LibavoidRouting } from './cytoscape-adapter/libavoid-routing';
-export { DEFAULT_OPTIONS } from './cytoscape-adapter/options';
-export type { EdgeSides, LibavoidOptions, RoutedEventInfo } from './cytoscape-adapter/options';
+export { LibavoidRouting } from "./cytoscape-adapter/libavoid-routing";
+export { DEFAULT_OPTIONS } from "./cytoscape-adapter/options";
+export type { EdgeSides, LibavoidOptions, RoutedEventInfo } from "./cytoscape-adapter/options";
 // routing without Cytoscape
-export type { Avoid, RoutingOptionName, RoutingParameterName } from './libavoid/api';
-export { loadLibavoid } from './libavoid/load';
-export { measureRoutes } from './postprocess/route-quality';
-export type { RouteQuality } from './postprocess/route-quality';
-export { EdgeRouter } from './routing/edge-router';
-export { DEFAULT_ROUTING_OPTIONS } from './routing/options';
-export type { PluginRoutingOptions, RawLibavoidOptions, RoutingOptions } from './routing/options';
-export type { RouteResult, RoutingBackend } from './routing/routing-backend';
-export type { Point, Side } from './shared/geometry';
-export type { GraphEdge, GraphModel, GraphNode } from './shared/graph';
+export type { Avoid, RoutingOptionName, RoutingParameterName } from "./libavoid/api";
+export { loadLibavoid } from "./libavoid/load";
+export { measureRoutes } from "./postprocess/route-quality";
+export type { RouteQuality } from "./postprocess/route-quality";
+export { EdgeRouter } from "./routing/edge-router";
+export { DEFAULT_ROUTING_OPTIONS } from "./routing/options";
+export type { PluginRoutingOptions, RawLibavoidOptions, RoutingOptions } from "./routing/options";
+export type { RouteResult, RoutingBackend } from "./routing/routing-backend";
+export type { Point, Side } from "./shared/geometry";
+export type { GraphEdge, GraphModel, GraphNode } from "./shared/graph";
 // routing in a Web Worker
-export type { RoutingWorker } from './worker/messages';
-export { WorkerRouter } from './worker/worker-router';
+export type { RoutingWorker } from "./worker/messages";
+export { WorkerRouter } from "./worker/worker-router";
 
-declare module 'cytoscape'
+declare module "cytoscape"
 {
-  interface Core
-  {
-    /**
-     * With options: creates a new routing instance (replacing the previous one).
-     * Without options: returns the current instance, creating it with defaults if needed.
-     *
-     * @param options the options to change, see {@link LibavoidOptions}
-     * @returns the routing instance of this graph
-     * @throws {Error} for invalid options
-     */
-    libavoid(options?: Partial<LibavoidOptions>): LibavoidRouting;
-  }
+    /** Cytoscape's graph instance (`cy`), extended by {@link register} with `cy.libavoid()`. */
+    interface Core
+    {
+        /**
+         * With options: creates a new routing instance (replacing the previous one).
+         * Without options: returns the current instance, creating it with defaults if needed.
+         *
+         * @param options the options to change, see {@link LibavoidOptions}
+         * @returns the routing instance of this graph
+         * @throws {Error} for invalid options
+         */
+        libavoid(options?: Partial<LibavoidOptions>): LibavoidRouting;
+    }
 }
 
 /**
@@ -62,17 +63,17 @@ declare module 'cytoscape'
  */
 export default function register(cytoscape: typeof cytoscapeFactory): void
 {
-  cytoscape('core', 'libavoid', function(this: Core, options?: Partial<LibavoidOptions>): LibavoidRouting
-  {
-    const stored = this.scratch(SCRATCH_KEY);
-    const current = stored instanceof LibavoidRouting ? stored : undefined;
-    if (current && !options)
+    cytoscape("core", "libavoid", function(this: Core, options?: Partial<LibavoidOptions>): LibavoidRouting
     {
-      return current;
-    }
-    current?.destroy();
-    const routing = new LibavoidRouting(this, options);
-    this.scratch(SCRATCH_KEY, routing);
-    return routing;
-  });
+        const stored: unknown = this.scratch(SCRATCH_KEY);
+        const current: LibavoidRouting | undefined = stored instanceof LibavoidRouting ? stored : undefined;
+        if (current && !options)
+        {
+            return current;
+        }
+        current?.destroy();
+        const routing: LibavoidRouting = new LibavoidRouting(this, options);
+        this.scratch(SCRATCH_KEY, routing);
+        return routing;
+    });
 }

@@ -3,9 +3,22 @@
  * shapes, pins, connectors and checkpoints, in model coordinates.
  */
 
-import { pluginError } from '../shared/errors';
-import type { Point, Side } from '../shared/geometry';
-import type { Avoid, ConnEnd, ConnRef, Deletable, Router, ShapeRef } from './api';
+import { pluginError } from "../shared/errors";
+import type { Point, Side } from "../shared/geometry";
+import type {
+    Avoid,
+    AvoidPoint,
+    CheckpointVector,
+    ConnEnd,
+    ConnRef,
+    Deletable,
+    EnumValue,
+    PolyLine,
+    Rectangle,
+    Router,
+    ShapeConnectionPin,
+    ShapeRef,
+} from "./api";
 
 /** libavoid's ConnDirFlags: the direction in which a connector may leave a pin on each side. */
 const DIRECTION_OF_SIDE: Record<Side, number> = { top: 1, bottom: 2, left: 4, right: 8 };
@@ -16,204 +29,207 @@ const DIRECTION_OF_SIDE: Record<Side, number> = { top: 1, bottom: 2, left: 4, ri
  */
 export class LibavoidSession
 {
-  /** The loaded libavoid instance the objects are created with. */
-  private readonly avoid: Avoid;
-  /** The router of this run; owns the shapes, pins and connectors. */
-  private readonly router: Router;
-  /** Helper objects to free in {@link LibavoidSession.dispose}; shapes, pins and connectors are freed by the router itself. */
-  private readonly allocations: Deletable[] = [];
+    /** The loaded libavoid instance the objects are created with. */
+    private readonly avoid: Avoid;
+    /** The router of this run; owns the shapes, pins and connectors. */
+    private readonly router: Router;
+    /**
+     * Helper objects to free in {@link LibavoidSession.dispose}; shapes, pins and connectors
+     * are freed by the router itself.
+     */
+    private readonly allocations: Deletable[] = [];
 
-  /**
-   * Creates a libavoid router for orthogonal routes: horizontal and vertical segments only.
-   *
-   * @param avoid initialised libavoid instance
-   */
-  constructor(avoid: Avoid)
-  {
-    this.avoid = avoid;
-    this.router = new avoid.Router(avoid.RouterFlag.OrthogonalRouting.value);
-  }
-
-  /**
-   * Sets one of libavoid's RoutingParameters by name.
-   *
-   * @param name  a libavoid RoutingParameter name
-   * @param value the new value
-   * @throws {Error} for a name libavoid does not know
-   */
-  setParameter(name: string, value: number): void
-  {
-    const parameter = this.avoid.RoutingParameter[name];
-    if (!parameter)
+    /**
+     * Creates a libavoid router for orthogonal routes: horizontal and vertical segments only.
+     *
+     * @param avoid initialised libavoid instance
+     */
+    constructor(avoid: Avoid)
     {
-      throw pluginError(`unknown routing parameter "${name}"`);
+        this.avoid = avoid;
+        this.router = new avoid.Router(avoid.RouterFlag.OrthogonalRouting.value);
     }
-    this.router.setRoutingParameter(parameter, value);
-  }
 
-  /**
-   * Switches one of libavoid's RoutingOptions on or off by name.
-   *
-   * @param name  a libavoid RoutingOption name
-   * @param value on or off
-   * @throws {Error} for a name libavoid does not know
-   */
-  setOption(name: string, value: boolean): void
-  {
-    const option = this.avoid.RoutingOption[name];
-    if (!option)
+    /**
+     * Sets one of libavoid's RoutingParameters by name.
+     *
+     * @param name  a libavoid RoutingParameter name
+     * @param value the new value
+     * @throws {Error} for a name libavoid does not know
+     */
+    setParameter(name: string, value: number): void
     {
-      throw pluginError(`unknown routing option "${name}"`);
+        const parameter: EnumValue | undefined = this.avoid.RoutingParameter[name];
+        if (!parameter)
+        {
+            throw pluginError(`unknown routing parameter "${name}"`);
+        }
+        this.router.setRoutingParameter(parameter, value);
     }
-    this.router.setRoutingOption(option, value);
-  }
 
-  /**
-   * Adds a rectangular obstacle.
-   *
-   * @param centre the rectangle's centre
-   * @param width  full width (px)
-   * @param height full height (px)
-   * @returns the shape, owned by the router
-   */
-  addShape(centre: Point, width: number, height: number): ShapeRef
-  {
-    const avoidCentre = this.track(new this.avoid.Point(centre.x, centre.y));
-    const rectangle = this.track(new this.avoid.Rectangle(avoidCentre, width, height));
-    return new this.avoid.ShapeRef(this.router, rectangle);
-  }
-
-  /**
-   * Adds a pin in the centre of one side of a shape. Connectors attach to a pin class;
-   * all pins of a shape with the same class are interchangeable, and any number of
-   * connectors may share a pin.
-   *
-   * @param shape   the shape, see {@link LibavoidSession.addShape}
-   * @param classId the pin class connectors refer to, see {@link LibavoidSession.shapeEnd}
-   * @param side    the side the pin sits on; connectors leave it facing outwards
-   */
-  addPin(shape: ShapeRef, classId: number, side: Side): void
-  {
-    // x / y as fractions of the shape size, (0, 0) = top left corner
-    const x = side === 'left' ? 0 : side === 'right' ? 1 : 0.5;
-    const y = side === 'top' ? 0 : side === 'bottom' ? 1 : 0.5;
-    const proportional = true;
-    const insideOffset = 0; // exactly on the border
-    const pin = new this.avoid.ShapeConnectionPin(
-      shape,
-      classId,
-      x,
-      y,
-      proportional,
-      insideOffset,
-      DIRECTION_OF_SIDE[side],
-    );
-    pin.setExclusive(false); // libavoid's default is one connector per pin
-  }
-
-  /**
-   * A connector end at any pin of a class of a shape; libavoid picks the pin.
-   *
-   * @param shape    the shape the connector attaches to
-   * @param pinClass the class of the pins it may use, see {@link LibavoidSession.addPin}
-   * @returns the end, for {@link LibavoidSession.connectEnds}
-   */
-  shapeEnd(shape: ShapeRef, pinClass: number): ConnEnd
-  {
-    return this.track(new this.avoid.ConnEnd(shape, pinClass));
-  }
-
-  /**
-   * A connector end at a free point, not attached to a shape; the connector may leave it in any direction.
-   *
-   * @param point where the connector starts or ends
-   * @returns the end, for {@link LibavoidSession.connectEnds}
-   */
-  pointEnd(point: Point): ConnEnd
-  {
-    return this.track(new this.avoid.ConnEnd(this.track(new this.avoid.Point(point.x, point.y))));
-  }
-
-  /**
-   * Adds a connector between two ends.
-   *
-   * @param source the end the route starts at, see {@link LibavoidSession.shapeEnd} and {@link LibavoidSession.pointEnd}
-   * @param target the end the route ends at
-   * @returns the connector, owned by the router
-   */
-  connectEnds(source: ConnEnd, target: ConnEnd): ConnRef
-  {
-    return new this.avoid.ConnRef(this.router, source, target);
-  }
-
-  /**
-   * Makes the connector pass through these points, in order.
-   *
-   * @param connector the connector, see {@link LibavoidSession.connectEnds}
-   * @param points    the checkpoints
-   */
-  setCheckpoints(connector: ConnRef, points: readonly Point[]): void
-  {
-    const checkpoints = this.track(new this.avoid.CheckpointVector());
-    for (const { x, y } of points)
+    /**
+     * Switches one of libavoid's RoutingOptions on or off by name.
+     *
+     * @param name  a libavoid RoutingOption name
+     * @param value on or off
+     * @throws {Error} for a name libavoid does not know
+     */
+    setOption(name: string, value: boolean): void
     {
-      checkpoints.push_back(this.track(new this.avoid.Checkpoint(this.track(new this.avoid.Point(x, y)))));
+        const option: EnumValue | undefined = this.avoid.RoutingOption[name];
+        if (!option)
+        {
+            throw pluginError(`unknown routing option "${name}"`);
+        }
+        this.router.setRoutingOption(option, value);
     }
-    connector.setRoutingCheckpoints(checkpoints);
-  }
 
-  /** Routes all connectors; afterwards {@link LibavoidSession.pointsOf} returns their routes. */
-  route(): void
-  {
-    this.router.processTransaction();
-  }
-
-  /**
-   * The routed points of a connector.
-   *
-   * @param connector a connector of this session, after {@link LibavoidSession.route}
-   * @returns the route points, from its source to its target end, as plain objects
-   */
-  pointsOf(connector: ConnRef): Point[]
-  {
-    const route = connector.displayRoute();
-    try
+    /**
+     * Adds a rectangular obstacle.
+     *
+     * @param centre the rectangle's centre
+     * @param width  full width (px)
+     * @param height full height (px)
+     * @returns the shape, owned by the router
+     */
+    addShape(centre: Point, width: number, height: number): ShapeRef
     {
-      const points: Point[] = [];
-      for (let i = 0; i < route.size(); i++)
-      {
-        const point = route.at(i);
-        points.push({ x: point.x, y: point.y });
-        point.delete();
-      }
-      return points;
+        const avoidCentre: AvoidPoint = this.track(new this.avoid.Point(centre.x, centre.y));
+        const rectangle: Rectangle = this.track(new this.avoid.Rectangle(avoidCentre, width, height));
+        return new this.avoid.ShapeRef(this.router, rectangle);
     }
-    finally
-    {
-      route.delete();
-    }
-  }
 
-  /** Frees everything the session allocated; it cannot be used afterwards. */
-  dispose(): void
-  {
-    for (const allocation of this.allocations)
+    /**
+     * Adds a pin in the centre of one side of a shape. Connectors attach to a pin class;
+     * all pins of a shape with the same class are interchangeable, and any number of
+     * connectors may share a pin.
+     *
+     * @param shape   the shape, see {@link LibavoidSession.addShape}
+     * @param classId the pin class connectors refer to, see {@link LibavoidSession.shapeEnd}
+     * @param side    the side the pin sits on; connectors leave it facing outwards
+     */
+    addPin(shape: ShapeRef, classId: number, side: Side): void
     {
-      allocation.delete();
+        // x / y as fractions of the shape size, (0, 0) = top left corner
+        const x: number = side === "left" ? 0 : side === "right" ? 1 : 0.5;
+        const y: number = side === "top" ? 0 : side === "bottom" ? 1 : 0.5;
+        const proportional: boolean = true;
+        const insideOffset: number = 0; // exactly on the border
+        const pin: ShapeConnectionPin = new this.avoid.ShapeConnectionPin(
+            shape,
+            classId,
+            x,
+            y,
+            proportional,
+            insideOffset,
+            DIRECTION_OF_SIDE[side],
+        );
+        pin.setExclusive(false); // libavoid's default is one connector per pin
     }
-    this.allocations.length = 0;
-    this.router.delete(); // also frees shapes, pins and connectors
-  }
 
-  /**
-   * Remembers an allocation to free in {@link LibavoidSession.dispose}.
-   *
-   * @param allocation a new libavoid object the router does not own
-   * @returns `allocation`, so it can be tracked where it is created
-   */
-  private track<T extends Deletable>(allocation: T): T
-  {
-    this.allocations.push(allocation);
-    return allocation;
-  }
+    /**
+     * A connector end at any pin of a class of a shape; libavoid picks the pin.
+     *
+     * @param shape    the shape the connector attaches to
+     * @param pinClass the class of the pins it may use, see {@link LibavoidSession.addPin}
+     * @returns the end, for {@link LibavoidSession.connectEnds}
+     */
+    shapeEnd(shape: ShapeRef, pinClass: number): ConnEnd
+    {
+        return this.track(new this.avoid.ConnEnd(shape, pinClass));
+    }
+
+    /**
+     * A connector end at a free point, not attached to a shape; the connector may leave it in any direction.
+     *
+     * @param point where the connector starts or ends
+     * @returns the end, for {@link LibavoidSession.connectEnds}
+     */
+    pointEnd(point: Point): ConnEnd
+    {
+        return this.track(new this.avoid.ConnEnd(this.track(new this.avoid.Point(point.x, point.y))));
+    }
+
+    /**
+     * Adds a connector between two ends.
+     *
+     * @param source the end the route starts at, see {@link LibavoidSession.shapeEnd} and {@link LibavoidSession.pointEnd}
+     * @param target the end the route ends at
+     * @returns the connector, owned by the router
+     */
+    connectEnds(source: ConnEnd, target: ConnEnd): ConnRef
+    {
+        return new this.avoid.ConnRef(this.router, source, target);
+    }
+
+    /**
+     * Makes the connector pass through these points, in order.
+     *
+     * @param connector the connector, see {@link LibavoidSession.connectEnds}
+     * @param points    the checkpoints
+     */
+    setCheckpoints(connector: ConnRef, points: readonly Point[]): void
+    {
+        const checkpoints: CheckpointVector = this.track(new this.avoid.CheckpointVector());
+        for (const { x, y } of points)
+        {
+            checkpoints.push_back(this.track(new this.avoid.Checkpoint(this.track(new this.avoid.Point(x, y)))));
+        }
+        connector.setRoutingCheckpoints(checkpoints);
+    }
+
+    /** Routes all connectors; afterwards {@link LibavoidSession.pointsOf} returns their routes. */
+    route(): void
+    {
+        this.router.processTransaction();
+    }
+
+    /**
+     * The routed points of a connector.
+     *
+     * @param connector a connector of this session, after {@link LibavoidSession.route}
+     * @returns the route points, from its source to its target end, as plain objects
+     */
+    pointsOf(connector: ConnRef): Point[]
+    {
+        const route: PolyLine = connector.displayRoute();
+        try
+        {
+            const points: Point[] = [];
+            for (let i: number = 0; i < route.size(); i++)
+            {
+                const point: AvoidPoint = route.at(i);
+                points.push({ x: point.x, y: point.y });
+                point.delete();
+            }
+            return points;
+        }
+        finally
+        {
+            route.delete();
+        }
+    }
+
+    /** Frees everything the session allocated; it cannot be used afterwards. */
+    dispose(): void
+    {
+        for (const allocation of this.allocations)
+        {
+            allocation.delete();
+        }
+        this.allocations.length = 0;
+        this.router.delete(); // also frees shapes, pins and connectors
+    }
+
+    /**
+     * Remembers an allocation to free in {@link LibavoidSession.dispose}.
+     *
+     * @param allocation a new libavoid object the router does not own
+     * @returns `allocation`, so it can be tracked where it is created
+     */
+    private track<T extends Deletable>(allocation: T): T
+    {
+        this.allocations.push(allocation);
+        return allocation;
+    }
 }
